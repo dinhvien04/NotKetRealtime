@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Phòng chat riêng trực tuyến của Nối Kết Realtime.">
+  <title>Phòng chat - Nối Kết Realtime</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="chat">
+  <section class="chat-screen">
+    <header class="app-header">
+      <div class="app-header-left">
+        <button class="mobile-menu-button" id="mobileMenuButton" type="button" aria-label="Mở danh sách người dùng">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <a class="brand" href="/chat" aria-label="Nối Kết Realtime">
+          <span class="brand-mark" aria-hidden="true">N</span>
+          <span>Nối Kết Realtime</span>
+        </a>
+        <span class="realtime-badge">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M13 2 4.5 13H12l-1 9 8.5-11H12l1-9Z"/></svg>
+          Realtime
+        </span>
+      </div>
+      <div class="account-area">
+        <div class="account-copy">
+          <span>Xin chào,</span>
+          <strong id="currentUsername"></strong>
+        </div>
+        <div class="avatar avatar-current" id="currentAvatar" aria-hidden="true"></div>
+        <button class="logout-button" id="logoutButton" type="button">Đăng xuất</button>
+      </div>
+    </header>
+
+    <div class="app-layout">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-heading">
+          <div>
+            <span class="sidebar-kicker">ĐANG HOẠT ĐỘNG</span>
+            <h2>Người dùng online</h2>
+          </div>
+          <span class="online-count" id="onlineCount">0</span>
+        </div>
+        <div class="user-list" id="userList"></div>
+        <div class="empty-users is-hidden" id="emptyUsers">
+          <span aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/><path d="M19 5a3 3 0 0 1 0 6"/></svg>
+          </span>
+          <p>Chưa có người dùng nào khác online.</p>
+        </div>
+        <div class="sidebar-footer">
+          <i></i>
+          <span>Máy chủ đang hoạt động ổn định</span>
+        </div>
+      </aside>
+      <button class="sidebar-backdrop is-hidden" id="sidebarBackdrop" type="button" aria-label="Đóng danh sách người dùng"></button>
+
+      <main class="conversation">
+        <section class="empty-state" id="emptyState">
+          <div class="empty-illustration" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-6a9 9 0 1 1 18-5Z"/><circle cx="8" cy="12" r=".7"/><circle cx="12" cy="12" r=".7"/><circle cx="16" cy="12" r=".7"/></svg>
+          </div>
+          <h2>Chọn một người để bắt đầu trò chuyện.</h2>
+          <p>Danh sách người dùng online được cập nhật tự động. Hãy chọn một người để gửi tin nhắn tức thời.</p>
+          <div class="empty-tags">
+            <span><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M13 2 4.5 13H12l-1 9 8.5-11H12l1-9Z"/></svg>Socket.IO</span>
+            <span><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>Chat riêng tư</span>
+          </div>
+        </section>
+
+        <section class="chat-panel is-hidden" id="chatPanel">
+          <header class="chat-header">
+            <div class="chat-person">
+              <div class="avatar" id="selectedAvatar" aria-hidden="true"></div>
+              <div>
+                <h2 id="selectedUsername"></h2>
+                <p class="person-status" id="selectedStatus"><i></i>Đang trực tuyến</p>
+              </div>
+            </div>
+            <span class="private-chip">Cuộc trò chuyện riêng</span>
+          </header>
+
+          <div class="messages" id="messages" aria-live="polite">
+            <div class="day-separator"><span>Hôm nay</span></div>
+          </div>
+
+          <div class="typing-status is-hidden" id="typingStatus">
+            <span id="typingText"></span>
+            <i></i><i></i><i></i>
+          </div>
+
+          <form class="message-form" id="messageForm">
+            <div class="message-input-shell">
+              <input id="messageInput" type="text" maxlength="2000" autocomplete="off" placeholder="Nhập tin nhắn..." disabled>
+              <button id="sendButton" type="submit" disabled aria-label="Gửi tin nhắn">
+                <span>Gửi</span>
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></svg>
+              </button>
+            </div>
+            <p class="input-hint" id="inputHint">Vui lòng chọn người để chat.</p>
+          </form>
+        </section>
+      </main>
+    </div>
+  </section>
+
+  <div class="connection-overlay is-hidden" id="connectionOverlay" role="status">
+    <div class="connection-card">
+      <div class="offline-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.7 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg>
+      </div>
+      <h2>Đã mất kết nối</h2>
+      <p>Ứng dụng đang thử kết nối lại với máy chủ. Tin nhắn sẽ tiếp tục khi kết nối được khôi phục.</p>
+      <span class="reconnecting"><i></i>Đang kết nối lại...</span>
+    </div>
+  </div>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/client.js"></script>
+</body>
+</html>

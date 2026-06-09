@@ -1,0 +1,26 @@
+{
+  "name": "noi-ket-realtime",
+  "version": "1.0.0",
+  "description": "Ứng dụng chat riêng realtime theo kiến trúc MVC với Express và Socket.IO.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js && node --check src/app.js && node --check src/controllers/socket.controller.js && node --check public/js/client.js",
+    "test": "node tests/socket.integration.test.js"
+  },
+  "keywords": [
+    "chat",
+    "realtime",
+    "socket.io",
+    "mvc"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}

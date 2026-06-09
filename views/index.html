@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Nối Kết Realtime - ứng dụng chat trực tuyến tức thì, riêng tư và không cần đăng ký.">
+  <title>Nối Kết Realtime - Chat trực tuyến tức thì</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="home">
+  <header class="home-header">
+    <div class="home-container home-header-inner">
+      <a class="home-brand" href="#hero" aria-label="Nối Kết Realtime">
+        <span class="home-brand-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-6a9 9 0 1 1 18-5Z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg>
+        </span>
+        <span>Nối Kết Realtime</span>
+      </a>
+      <nav class="home-nav" aria-label="Điều hướng chính">
+        <a class="is-active" href="#hero">Trang chủ</a>
+        <a href="#features">Tính năng</a>
+        <a href="#how-it-works">Cách hoạt động</a>
+        <a href="#footer">Liên hệ</a>
+      </nav>
+      <a class="home-header-cta" href="#join">Bắt đầu chat</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="home-hero" id="hero">
+      <div class="hero-orb hero-orb-one"></div>
+      <div class="hero-orb hero-orb-two"></div>
+      <div class="home-container home-hero-grid">
+        <div class="home-hero-copy">
+          <div class="hero-tags" aria-label="Công nghệ nổi bật">
+            <span>#Realtime</span>
+            <span>#Socket.IO</span>
+            <span>#NoAccount</span>
+          </div>
+          <h1><span>Nối Kết Realtime</span> - Ứng dụng chat trực tuyến tức thì</h1>
+          <p>Trò chuyện không độ trễ trong không gian 1-1 riêng tư và hoàn toàn miễn phí. Không cần đăng ký, không cần mật khẩu.</p>
+          <div class="hero-actions">
+            <a class="home-button home-button-primary" href="#join">Vào phòng chat</a>
+            <a class="home-button home-button-soft" href="#features">Xem tính năng</a>
+          </div>
+          <div class="hero-trust">
+            <span><i></i> Kết nối ổn định</span>
+            <span>
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8.2 7 10 4.2-1.8 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+              Riêng tư 1-1
+            </span>
+          </div>
+        </div>
+
+        <div class="home-join-card hero-join-card" id="join">
+          <div class="join-heading">
+            <span class="join-heading-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13H12l-1 9 8.5-11H12l1-9Z"/></svg>
+            </span>
+            <div>
+              <span class="home-eyebrow">BẮT ĐẦU NGAY</span>
+              <h2>Tham gia trò chuyện</h2>
+              <p>Chỉ cần nhập tên của bạn và kết nối với mọi người đang online.</p>
+            </div>
+          </div>
+          <form class="home-join-form" id="joinForm" novalidate>
+            <label for="usernameInput">Tên người dùng</label>
+            <div class="home-input-shell">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+              <input id="usernameInput" name="username" type="text" maxlength="40" autocomplete="name" placeholder="Ví dụ: Nguyễn Văn A">
+            </div>
+            <p class="form-error" id="joinError" role="alert"></p>
+            <button class="home-join-button" id="joinButton" type="submit">
+              <span>Vào phòng chat</span>
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+            </button>
+            <p class="join-security">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8.2 7 10 4.2-1.8 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+              An toàn và bảo mật. Không cần đăng ký tài khoản.
+            </p>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-demo-section">
+      <div class="home-container">
+        <div class="home-section-heading">
+          <span class="home-eyebrow">TRẢI NGHIỆM REALTIME</span>
+          <h2>Trò chuyện nhanh và liền mạch</h2>
+          <p>Tin nhắn, trạng thái online và thông báo đang nhập đều được cập nhật tức thì.</p>
+        </div>
+        <div class="hero-demo showcase-demo" aria-label="Minh họa giao diện chat">
+          <div class="demo-window">
+            <div class="demo-header">
+              <div class="demo-user">
+                <span class="demo-avatar">MA</span>
+                <div><strong>Minh Anh</strong><small><i></i> Đang trực tuyến</small></div>
+              </div>
+              <button type="button" aria-label="Tùy chọn">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+              </button>
+            </div>
+            <div class="demo-messages">
+              <div class="demo-date">Hôm nay</div>
+              <div class="demo-message demo-message-in">
+                <p>Chào bạn! Bạn đã thử gửi tin nhắn realtime chưa? Tốc độ cực nhanh luôn ấy!</p>
+                <small>Minh Anh · 10:24</small>
+              </div>
+              <div class="demo-message demo-message-out">
+                <p>Mình vừa thử xong, rất mượt! Không cần tải lại trang.</p>
+                <small>Tôi · 10:25</small>
+              </div>
+              <div class="demo-typing">Quốc Bảo đang nhập <i></i><i></i><i></i></div>
+            </div>
+            <div class="demo-composer">
+              <span>Nhập tin nhắn...</span>
+              <button type="button" aria-label="Gửi tin nhắn">
+                <svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="demo-float-card demo-float-online"><i></i><strong>12</strong><span>đang online</span></div>
+          <div class="demo-float-card demo-float-speed">
+            <svg viewBox="0 0 24 24"><path d="M13 2 4.5 13H12l-1 9 8.5-11H12l1-9Z"/></svg>
+            <span>Phản hồi tức thì</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-section" id="features">
+      <div class="home-container">
+        <div class="home-section-heading">
+          <span class="home-eyebrow">TÍNH NĂNG</span>
+          <h2>Mọi thứ bạn cần để kết nối</h2>
+          <p>Tập trung vào trải nghiệm trò chuyện nhanh, đơn giản và riêng tư.</p>
+        </div>
+        <div class="home-feature-grid">
+          <article class="home-feature-card">
+            <span class="home-feature-icon"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6m3-3h-6"/></svg></span>
+            <h3>Người dùng online</h3>
+            <p>Danh sách trực tuyến được cập nhật tự động theo thời gian thực.</p>
+          </article>
+          <article class="home-feature-card">
+            <span class="home-feature-icon"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-6a9 9 0 1 1 18-5Z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg></span>
+            <h3>Chat riêng 1-1</h3>
+            <p>Chọn một người đang online và bắt đầu cuộc trò chuyện riêng tư.</p>
+          </article>
+          <article class="home-feature-card">
+            <span class="home-feature-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg></span>
+            <h3>Tin nhắn realtime</h3>
+            <p>Gửi, nhận và hiển thị trạng thái đang nhập ngay lập tức.</p>
+          </article>
+          <article class="home-feature-card">
+            <span class="home-feature-icon"><svg viewBox="0 0 24 24"><path d="M5 5a10 10 0 0 1 14 14M2 2l20 20"/><path d="M8.5 8.5A5 5 0 0 1 15.5 15.5"/></svg></span>
+            <h3>Báo mất kết nối</h3>
+            <p>Nhận thông báo rõ ràng khi máy chủ hoặc người dùng ngắt kết nối.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-section home-how-section" id="how-it-works">
+      <div class="home-container">
+        <div class="home-section-heading">
+          <span class="home-eyebrow">CÁCH HOẠT ĐỘNG</span>
+          <h2>Bắt đầu chỉ trong 3 bước</h2>
+          <p>Không biểu mẫu dài, không mật khẩu và không mất thời gian thiết lập.</p>
+        </div>
+        <div class="home-steps">
+          <article><span>1</span><h3>Nhập tên</h3><p>Chọn tên hiển thị để tham gia phòng chat.</p></article>
+          <article><span>2</span><h3>Chọn người online</h3><p>Tìm người bạn muốn trò chuyện trong danh sách.</p></article>
+          <article><span>3</span><h3>Bắt đầu chat</h3><p>Gửi tin nhắn và nhận phản hồi theo thời gian thực.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-cta">
+      <div class="home-container home-cta-inner">
+        <div>
+          <span class="home-eyebrow">KẾT NỐI NGAY HÔM NAY</span>
+          <h2>Sẵn sàng để trò chuyện?</h2>
+          <p>Trải nghiệm chat realtime hiện đại, miễn phí và không cần tài khoản.</p>
+        </div>
+        <a class="home-button home-button-light" href="#join">
+          Trải nghiệm ngay
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="home-footer" id="footer">
+    <div class="home-container home-footer-main">
+      <div>
+        <a class="home-brand" href="#hero">
+          <span class="home-brand-icon"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-6a9 9 0 1 1 18-5Z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></svg></span>
+          <span>Nối Kết Realtime</span>
+        </a>
+        <p>Ứng dụng chat được xây dựng với Node.js, Express và Socket.IO.</p>
+      </div>
+      <div class="footer-links">
+        <a href="#features">Tính năng</a>
+        <a href="#how-it-works">Cách hoạt động</a>
+        <a href="#join">Vào phòng chat</a>
+      </div>
+    </div>
+    <div class="home-container home-footer-bottom">
+      <span>© 2026 Nối Kết Realtime.</span>
+      <span>Dự án thực hành công nghệ Web Realtime.</span>
+    </div>
+  </footer>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/client.js"></script>
+</body>
+</html>
