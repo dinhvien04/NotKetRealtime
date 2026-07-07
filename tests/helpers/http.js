@@ -1,14 +1,25 @@
-function extractCookie(response) {
+function parseSetCookieHeaders(response) {
   if (typeof response.headers.getSetCookie === "function") {
-    const cookies = response.headers.getSetCookie();
-    if (cookies.length) {
-      return cookies[0].split(";")[0];
-    }
+    return response.headers.getSetCookie();
   }
 
   const setCookie = response.headers.get("set-cookie");
-  if (!setCookie) return "";
-  return setCookie.split(";")[0];
+  if (!setCookie) return [];
+  return Array.isArray(setCookie) ? setCookie : [setCookie];
+}
+
+function extractCookie(response, cookieName) {
+  const cookies = parseSetCookieHeaders(response);
+  if (!cookies.length) return "";
+
+  if (!cookieName) {
+    return cookies[0].split(";")[0];
+  }
+
+  const match = cookies.find((entry) =>
+    entry.trim().startsWith(`${cookieName}=`)
+  );
+  return match ? match.split(";")[0] : "";
 }
 
 function waitForSocketConnect(socket, timeout = 8000) {

@@ -19,6 +19,9 @@ module.exports = {
   get databaseUrl() {
     return process.env.DATABASE_URL || "";
   },
+  get migrationDatabaseUrl() {
+    return process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL || "";
+  },
   get jwtSecret() {
     return process.env.JWT_SECRET || "";
   },
@@ -30,6 +33,9 @@ module.exports = {
   },
   get cookieName() {
     return process.env.COOKIE_NAME || "notket_token";
+  },
+  get csrfCookieName() {
+    return process.env.CSRF_COOKIE_NAME || "notket_csrf";
   },
   get clientOrigin() {
     return process.env.CLIENT_ORIGIN || "http://localhost:3000";
@@ -67,5 +73,38 @@ module.exports = {
   },
   get isProduction() {
     return process.env.NODE_ENV === "production";
+  },
+  get appBaseUrl() {
+    return process.env.APP_BASE_URL || "http://localhost:3000";
+  },
+  get smtpHost() {
+    return process.env.SMTP_HOST || "";
+  },
+  get smtpPort() {
+    return Number(process.env.SMTP_PORT) || 587;
+  },
+  get smtpUser() {
+    return process.env.SMTP_USER || "";
+  },
+  get smtpPass() {
+    return process.env.SMTP_PASS || "";
+  },
+  get smtpFrom() {
+    return process.env.SMTP_FROM || "";
+  },
+  get passwordResetOtpTtlMinutes() {
+    const value = Number(process.env.PASSWORD_RESET_OTP_TTL_MINUTES) || 10;
+    return Number.isFinite(value) ? value : 10;
+  },
+  get otpPepper() {
+    return process.env.OTP_PEPPER || process.env.JWT_SECRET || "";
+  },
+  get maxAvatarBytes() {
+    const value = Number(process.env.MAX_AVATAR_BYTES) || 2097152;
+    return Number.isFinite(value) ? value : 2097152;
+  },
+  get messageEditWindowMinutes() {
+    const value = Number(process.env.MESSAGE_EDIT_WINDOW_MINUTES) || 15;
+    return Number.isFinite(value) ? value : 15;
   }
 };

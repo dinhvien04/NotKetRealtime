@@ -3,6 +3,7 @@ const rateLimit = require("express-rate-limit");
 const uploadMiddleware = require("../middlewares/upload.middleware");
 const uploadController = require("../controllers/upload.controller");
 const { requireAuth } = require("../middlewares/auth.middleware");
+const { requireCsrf } = require("../middlewares/csrf.middleware");
 
 const router = express.Router();
 
@@ -17,6 +18,7 @@ const uploadRateLimit = rateLimit({
 router.post(
   "/",
   requireAuth,
+  requireCsrf,
   uploadRateLimit,
   uploadMiddleware,
   uploadController.uploadFile

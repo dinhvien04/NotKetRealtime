@@ -22,11 +22,32 @@ async function runValidationTests() {
   }
 
   try {
+    authService.validatePassword("a".repeat(129));
+    assert.fail("Password dài phải bị reject");
+  } catch (error) {
+    assert.match(error.message, /128 ký tự/);
+  }
+
+  try {
     authService.validateEmail("invalid-email");
     assert.fail("Email sai phải bị reject");
   } catch (error) {
     assert.match(error.message, /Email/);
   }
+
+  const savedSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "short";
+  try {
+    authService.createToken({
+      id: "11111111-1111-1111-1111-111111111111",
+      username: "tester",
+      displayName: "Tester"
+    });
+    assert.fail("JWT_SECRET ngắn phải bị reject");
+  } catch (error) {
+    assert.match(error.message, /32 ký tự/);
+  }
+  process.env.JWT_SECRET = savedSecret;
 
   const token = authService.createToken({
     id: "11111111-1111-1111-1111-111111111111",

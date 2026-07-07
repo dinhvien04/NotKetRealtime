@@ -1,7 +1,11 @@
 const { randomUUID } = require("crypto");
 const config = require("../config/env");
 const { getSupabaseClient } = require("./supabase.service");
-const { isAllowedMimeType, getKindFromMimeType } = require("../utils/mime");
+const { getKindFromMimeType } = require("../utils/mime");
+const {
+  validateUploadedFile,
+  extensionFromMimeType
+} = require("../utils/file-magic");
 const { sanitizeFileName, sanitizeSenderId } = require("../utils/filename");
 
 async function uploadChatFile({ buffer, originalName, mimeType, size, senderId }) {
@@ -19,22 +23,25 @@ async function uploadChatFile({ buffer, originalName, mimeType, size, senderId }
     );
   }
 
-  if (!isAllowedMimeType(mimeType)) {
-    throw new Error("Loại file không được hỗ trợ.");
-  }
+  const validatedMimeType = await validateUploadedFile({
+    buffer,
+    declaredMimeType: mimeType,
+    originalName
+  });
 
   const supabase = getSupabaseClient();
   const safeSenderId = sanitizeSenderId(senderId);
-  const safeFileName = sanitizeFileName(originalName);
+  const displayFileName = sanitizeFileName(originalName);
   const now = new Date();
   const year = String(now.getFullYear());
   const month = String(now.getMonth() + 1).padStart(2, "0");
-  const fileKey = `chats/${safeSenderId}/${year}/${month}/${randomUUID()}-${safeFileName}`;
+  const storedFileName = `${randomUUID()}.${extensionFromMimeType(validatedMimeType)}`;
+  const fileKey = `chats/${safeSenderId}/${year}/${month}/${storedFileName}`;
 
   const { error } = await supabase.storage
     .from(config.supabaseStorageBucket)
     .upload(fileKey, buffer, {
-      contentType: mimeType,
+      contentType: validatedMimeType,
       upsert: false
     });
 
@@ -47,15 +54,70 @@ async function uploadChatFile({ buffer, originalName, mimeType, size, senderId }
     .getPublicUrl(fileKey);
 
   return {
-    kind: getKindFromMimeType(mimeType),
+    kind: getKindFromMimeType(validatedMimeType),
     fileUrl: publicData.publicUrl,
     fileKey,
-    fileName: safeFileName,
-    mimeType,
+    fileName: displayFileName,
+    mimeType: validatedMimeType,
+    size
+  };
+}
+
+const IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif"
+]);
+
+async function uploadAvatar({ buffer, mimeType, size, userId }) {
+  if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error("Ảnh đại diện không hợp lệ.");
+  }
+
+  if (!size || size <= 0 || size > config.maxAvatarBytes) {
+    throw new Error("Kích thước ảnh đại diện không hợp lệ.");
+  }
+
+  if (!IMAGE_MIME_TYPES.has(mimeType)) {
+    throw new Error("Chỉ hỗ trợ ảnh JPEG, PNG, WebP hoặc GIF.");
+  }
+
+  const validatedMimeType = await validateUploadedFile({
+    buffer,
+    declaredMimeType: mimeType,
+    originalName: `avatar.${extensionFromMimeType(mimeType)}`
+  });
+
+  const supabase = getSupabaseClient();
+  const safeUserId = sanitizeSenderId(userId);
+  const storedFileName = `${randomUUID()}.${extensionFromMimeType(validatedMimeType)}`;
+  const fileKey = `avatars/${safeUserId}/${storedFileName}`;
+
+  const { error } = await supabase.storage
+    .from(config.supabaseStorageBucket)
+    .upload(fileKey, buffer, {
+      contentType: validatedMimeType,
+      upsert: true
+    });
+
+  if (error) {
+    throw new Error(error.message || "Không thể upload ảnh đại diện.");
+  }
+
+  const { data: publicData } = supabase.storage
+    .from(config.supabaseStorageBucket)
+    .getPublicUrl(fileKey);
+
+  return {
+    avatarUrl: publicData.publicUrl,
+    fileKey,
+    mimeType: validatedMimeType,
     size
   };
 }
 
 module.exports = {
-  uploadChatFile
+  uploadChatFile,
+  uploadAvatar
 };

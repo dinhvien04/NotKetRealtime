@@ -7,8 +7,9 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "db:migrate": "node src/db/migrate.js",
-    "check": "node --check server.js && node --check src/app.js && node --check src/config/env.js && node --check src/controllers/socket.controller.js && node --check src/controllers/auth.controller.js && node --check src/controllers/upload.controller.js && node --check src/services/auth.service.js && node --check src/services/storage.service.js && node --check public/js/client.js",
-    "test": "node tests/auth.service.test.js && node tests/auth.api.test.js && node tests/socket.integration.test.js"
+    "db:status": "node src/db/migrate.js --status",
+    "check": "node --check server.js && node --check src/app.js && node --check src/config/env.js && node --check src/db/migrate.js && node --check src/middlewares/csrf.middleware.js && node --check src/middlewares/socket-origin.middleware.js && node --check src/middlewares/avatar.middleware.js && node --check src/routes/csrf.routes.js && node --check src/routes/user.routes.js && node --check src/routes/message.routes.js && node --check src/controllers/socket.controller.js && node --check src/controllers/auth.controller.js && node --check src/controllers/user.controller.js && node --check src/controllers/message.controller.js && node --check src/controllers/upload.controller.js && node --check src/services/auth.service.js && node --check src/services/profile.service.js && node --check src/services/password-reset.service.js && node --check src/services/message.service.js && node --check src/services/realtime.service.js && node --check src/services/mailer.service.js && node --check src/services/audit.service.js && node --check src/services/storage.service.js && node --check src/utils/file-magic.js && node --check src/utils/emoji.js && node --check public/js/client.js",
+    "test": "node tests/auth.service.test.js && node tests/password-reset.service.test.js && node tests/csrf.api.test.js && node tests/file-validation.test.js && node tests/auth.api.test.js && node tests/profile.api.test.js && node tests/password-reset.api.test.js && node tests/messages.api.test.js && node tests/socket.integration.test.js"
   },
   "keywords": [
     "chat",
@@ -24,9 +25,11 @@
     "dotenv": "^17.4.2",
     "express": "^5.1.0",
     "express-rate-limit": "^8.5.2",
+    "file-type": "^16.5.4",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
+    "nodemailer": "^9.0.3",
     "pg": "^8.22.0",
     "socket.io": "^4.8.1",
     "uuid": "^14.0.1"

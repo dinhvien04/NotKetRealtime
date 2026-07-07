@@ -46,6 +46,26 @@ async function requireAuth(req, res, next) {
   }
 }
 
+async function optionalAuth(req, res, next) {
+  try {
+    const configError = authService.getAuthConfigError();
+    if (configError) {
+      return next();
+    }
+
+    const token = getTokenFromRequest(req);
+    if (!token) {
+      return next();
+    }
+
+    req.user = await authService.getUserFromToken(token);
+  } catch (_error) {
+    // ignore invalid session for optional auth routes
+  }
+
+  return next();
+}
+
 function requireAuthPage(req, res, next) {
   const token = getTokenFromRequest(req);
   if (!token) {
@@ -63,6 +83,7 @@ function requireAuthPage(req, res, next) {
 
 module.exports = {
   requireAuth,
+  optionalAuth,
   requireAuthPage,
   getTokenFromRequest,
   setAuthCookie,

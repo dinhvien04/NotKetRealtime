@@ -66,6 +66,7 @@
           <div class="auth-tabs" role="tablist" aria-label="Xác thực">
             <button class="auth-tab is-active" id="loginTab" type="button" role="tab" aria-selected="true">Đăng nhập</button>
             <button class="auth-tab" id="registerTab" type="button" role="tab" aria-selected="false">Đăng ký</button>
+            <button class="auth-tab" id="forgotTab" type="button" role="tab" aria-selected="false">Quên MK</button>
           </div>
           <form class="home-join-form auth-panel" id="loginForm" novalidate>
             <label for="loginIdentifier">Username hoặc email</label>
@@ -79,9 +80,37 @@
               <input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="Ít nhất 8 ký tự">
             </div>
             <p class="form-error" id="loginError" role="alert"></p>
+            <button class="text-link-button" id="openForgotFromLogin" type="button">Quên mật khẩu?</button>
             <button class="home-join-button" id="loginButton" type="submit">
               <span>Đăng nhập</span>
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+            </button>
+          </form>
+          <form class="home-join-form auth-panel is-hidden" id="forgotForm" novalidate>
+            <label for="forgotEmail">Email đã đăng ký</label>
+            <div class="home-input-shell">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
+              <input id="forgotEmail" name="email" type="email" autocomplete="email" placeholder="email@example.com">
+            </div>
+            <label for="forgotOtp">Mã OTP (sau khi nhận email)</label>
+            <div class="home-input-shell">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+              <input id="forgotOtp" name="otp" type="text" inputmode="numeric" maxlength="6" placeholder="6 chữ số">
+            </div>
+            <label for="forgotNewPassword">Mật khẩu mới</label>
+            <div class="home-input-shell">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+              <input id="forgotNewPassword" name="password" type="password" autocomplete="new-password" placeholder="Ít nhất 8 ký tự">
+            </div>
+            <label for="forgotConfirmPassword">Xác nhận mật khẩu mới</label>
+            <div class="home-input-shell">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+              <input id="forgotConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" placeholder="Nhập lại mật khẩu">
+            </div>
+            <p class="form-hint" id="forgotHint">Bước 1: gửi OTP. Bước 2: nhập OTP + mật khẩu mới.</p>
+            <p class="form-error" id="forgotError" role="alert"></p>
+            <button class="home-join-button" id="forgotSubmitButton" type="submit">
+              <span>Gửi OTP</span>
             </button>
           </form>
           <form class="home-join-form auth-panel is-hidden" id="registerForm" novalidate>

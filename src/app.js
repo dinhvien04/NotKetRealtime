@@ -6,6 +6,9 @@ const config = require("./config/env");
 const webRoutes = require("./routes/web.routes");
 const authRoutes = require("./routes/auth.routes");
 const uploadRoutes = require("./routes/upload.routes");
+const userRoutes = require("./routes/user.routes");
+const messageRoutes = require("./routes/message.routes");
+const csrfRoutes = require("./routes/csrf.routes");
 
 const app = express();
 
@@ -28,7 +31,10 @@ app.use(cookieParser());
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
+app.use("/api", csrfRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/messages", messageRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/", webRoutes);
 

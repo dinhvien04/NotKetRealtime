@@ -1401,7 +1401,8 @@ html {
   background: linear-gradient(145deg, var(--primary), var(--primary-dark));
 }
 
-.logout-button {
+.logout-button,
+.profile-button {
   padding: 9px 13px;
   color: var(--primary-dark);
   background: var(--primary-soft);
@@ -1409,6 +1410,222 @@ html {
   cursor: pointer;
   font-size: 12px;
   font-weight: 800;
+}
+
+.text-link-button {
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.profile-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 16px;
+}
+
+.profile-modal.is-hidden {
+  display: none;
+}
+
+.profile-modal-card {
+  width: min(480px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--white);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.2);
+}
+
+.profile-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.profile-close-button {
+  border: 0;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.profile-form label {
+  display: block;
+  margin: 10px 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.profile-form input,
+.profile-form textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.chat-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chat-header-actions input {
+  min-width: 180px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.chat-header-actions button {
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.search-results {
+  max-height: 180px;
+  overflow: auto;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+  padding: 8px 12px;
+}
+
+.search-results.is-hidden {
+  display: none;
+}
+
+.search-result-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.search-result-item:hover {
+  background: var(--primary-soft);
+}
+
+.reply-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #f1f5f9;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.reply-preview.is-hidden {
+  display: none;
+}
+
+.message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.message-action-btn,
+.reaction-btn {
+  border: 0;
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.message-reaction-chip {
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.message-reaction-chip.is-own {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.message-reply-quote {
+  font-size: 12px;
+  opacity: 0.75;
+  border-left: 3px solid var(--primary);
+  padding-left: 8px;
+  margin-bottom: 6px;
+}
+
+.reaction-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.message-row.is-highlighted .message-bubble {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.message-bubble.is-deleted {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.message-edited-tag {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.unread-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
 }
 
 .mobile-menu-button {

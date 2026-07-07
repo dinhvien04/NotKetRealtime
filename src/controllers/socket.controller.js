@@ -2,7 +2,10 @@ const presenceModel = require("../models/presence.model");
 const messageModel = require("../models/message.model");
 const uploadModel = require("../models/upload.model");
 const conversationRepository = require("../repositories/conversation.repository");
+const messageRepository = require("../repositories/message.repository");
 const userRepository = require("../repositories/user.repository");
+const messageService = require("../services/message.service");
+const realtimeService = require("../services/realtime.service");
 const { sanitizeMessage } = require("../utils/sanitize");
 
 function emitOnlineUsers(io) {
@@ -92,6 +95,7 @@ function registerSocketController(io) {
           ok: true,
           messages,
           nextCursor: result.nextCursor,
+          hasMore: result.hasMore,
           conversationId,
           otherUser
         });
@@ -105,44 +109,85 @@ function registerSocketController(io) {
     });
 
     socket.on("private_message", async (payload = {}, callback) => {
-      const receiverId = payload.receiverId;
       const messageType = payload.type || "text";
 
-      if (!receiverId || receiverId === user.id) {
-        reply(callback, {
-          ok: false,
-          error: "Người nhận không hợp lệ."
-        });
-        return;
-      }
-
       try {
-        const receiver = await userRepository.findById(receiverId);
-        if (!receiver) {
-          reply(callback, {
-            ok: false,
-            error: "Người nhận không tồn tại."
-          });
-          return;
-        }
+        let conversationId;
+        let receiverId;
 
-        const conversationId =
-          payload.conversationId ||
-          (await conversationRepository.findOrCreateDirectConversation(
-            user.id,
-            receiverId
-          ));
+        if (payload.conversationId) {
+          conversationId = payload.conversationId;
 
-        const allowed = await conversationRepository.isParticipant(
-          conversationId,
-          user.id
-        );
-        if (!allowed) {
-          reply(callback, {
-            ok: false,
-            error: "Bạn không có quyền gửi tin nhắn trong hội thoại này."
-          });
-          return;
+          const allowed = await conversationRepository.isParticipant(
+            conversationId,
+            user.id
+          );
+          if (!allowed) {
+            reply(callback, {
+              ok: false,
+              error: "Bạn không có quyền gửi tin nhắn trong hội thoại này."
+            });
+            return;
+          }
+
+          const otherUser = await conversationRepository.getOtherParticipant(
+            conversationId,
+            user.id
+          );
+          if (!otherUser) {
+            reply(callback, {
+              ok: false,
+              error: "Không tìm thấy người nhận trong hội thoại."
+            });
+            return;
+          }
+
+          receiverId = otherUser.id;
+
+          if (payload.receiverId && payload.receiverId !== receiverId) {
+            reply(callback, {
+              ok: false,
+              error: "Người nhận không thuộc hội thoại này."
+            });
+            return;
+          }
+        } else {
+          receiverId = payload.receiverId;
+
+          if (!receiverId || receiverId === user.id) {
+            reply(callback, {
+              ok: false,
+              error: "Người nhận không hợp lệ."
+            });
+            return;
+          }
+
+          const receiver = await userRepository.findById(receiverId);
+          if (!receiver) {
+            reply(callback, {
+              ok: false,
+              error: "Người nhận không tồn tại."
+            });
+            return;
+          }
+
+          conversationId =
+            await conversationRepository.findOrCreateDirectConversation(
+              user.id,
+              receiverId
+            );
+
+          const allowed = await conversationRepository.isParticipant(
+            conversationId,
+            user.id
+          );
+          if (!allowed) {
+            reply(callback, {
+              ok: false,
+              error: "Bạn không có quyền gửi tin nhắn trong hội thoại này."
+            });
+            return;
+          }
         }
 
         let messagePayload;
@@ -156,7 +201,11 @@ function registerSocketController(io) {
             });
             return;
           }
-          messagePayload = { type: "text", message: content };
+          messagePayload = {
+            type: "text",
+            message: content,
+            replyToMessageId: payload.replyToMessageId || null
+          };
         } else if (messageType === "image" || messageType === "file") {
           const pendingUpload = uploadModel.consumePendingUpload(
             user.id,
@@ -190,7 +239,8 @@ function registerSocketController(io) {
             fileKey: pendingUpload.fileKey,
             fileName: pendingUpload.fileName,
             mimeType: pendingUpload.mimeType,
-            size: pendingUpload.size
+            size: pendingUpload.size,
+            replyToMessageId: payload.replyToMessageId || null
           };
         } else {
           reply(callback, {
@@ -260,11 +310,140 @@ function registerSocketController(io) {
       });
     });
 
+    socket.on("edit_message", async (payload = {}, callback) => {
+      try {
+        const messageId = payload.messageId;
+        if (!messageId) {
+          reply(callback, { ok: false, error: "Thiếu messageId." });
+          return;
+        }
+
+        const message = await messageService.editMessage(
+          user.id,
+          messageId,
+          payload.body ?? payload.message ?? payload.text
+        );
+
+        const outbound = { conversationId: message.conversationId, message };
+        await realtimeService.emitToConversation(
+          message.conversationId,
+          "message_edited",
+          outbound
+        );
+        reply(callback, { ok: true, message });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể chỉnh sửa tin nhắn."
+        });
+      }
+    });
+
+    socket.on("delete_message", async (payload = {}, callback) => {
+      try {
+        const messageId = payload.messageId;
+        if (!messageId) {
+          reply(callback, { ok: false, error: "Thiếu messageId." });
+          return;
+        }
+
+        const message = await messageService.deleteMessage(user.id, messageId);
+        const outbound = { conversationId: message.conversationId, message };
+        await realtimeService.emitToConversation(
+          message.conversationId,
+          "message_deleted",
+          outbound
+        );
+        reply(callback, { ok: true, message });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể xóa tin nhắn."
+        });
+      }
+    });
+
+    socket.on("add_reaction", async (payload = {}, callback) => {
+      try {
+        const { messageId, emoji } = payload;
+        if (!messageId || !emoji) {
+          reply(callback, { ok: false, error: "Thiếu messageId hoặc emoji." });
+          return;
+        }
+
+        const message = await messageService.addReaction(
+          user.id,
+          messageId,
+          emoji
+        );
+        const outbound = {
+          conversationId: message.conversationId,
+          messageId: message.id,
+          emoji: emoji.trim(),
+          userId: user.id,
+          reactions: message.reactions
+        };
+        await realtimeService.emitToConversation(
+          message.conversationId,
+          "message_reaction_added",
+          outbound
+        );
+        reply(callback, { ok: true, message });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể thêm reaction."
+        });
+      }
+    });
+
+    socket.on("remove_reaction", async (payload = {}, callback) => {
+      try {
+        const { messageId, emoji } = payload;
+        if (!messageId || !emoji) {
+          reply(callback, { ok: false, error: "Thiếu messageId hoặc emoji." });
+          return;
+        }
+
+        const message = await messageService.removeReaction(
+          user.id,
+          messageId,
+          emoji
+        );
+        const outbound = {
+          conversationId: message.conversationId,
+          messageId: message.id,
+          emoji: emoji.trim(),
+          userId: user.id,
+          reactions: message.reactions
+        };
+        await realtimeService.emitToConversation(
+          message.conversationId,
+          "message_reaction_removed",
+          outbound
+        );
+        reply(callback, { ok: true, message });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể gỡ reaction."
+        });
+      }
+    });
+
     socket.on("mark_read", async (payload = {}, callback) => {
       try {
         const { conversationId, messageId } = payload;
         if (!conversationId || !messageId) {
           reply(callback, { ok: false, error: "Thiếu dữ liệu mark_read." });
+          return;
+        }
+
+        const exists = await conversationRepository.conversationExists(
+          conversationId
+        );
+        if (!exists) {
+          reply(callback, { ok: false, error: "Hội thoại không tồn tại." });
           return;
         }
 
@@ -274,6 +453,20 @@ function registerSocketController(io) {
         );
         if (!allowed) {
           reply(callback, { ok: false, error: "Không có quyền cập nhật đã đọc." });
+          return;
+        }
+
+        const message = await messageRepository.findById(messageId);
+        if (!message) {
+          reply(callback, { ok: false, error: "Tin nhắn không tồn tại." });
+          return;
+        }
+
+        if (message.conversationId !== conversationId) {
+          reply(callback, {
+            ok: false,
+            error: "Tin nhắn không thuộc hội thoại này."
+          });
           return;
         }
 

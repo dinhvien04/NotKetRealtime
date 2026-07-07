@@ -15,6 +15,7 @@ const {
   tokenFromCookie,
   waitForSocketConnect
 } = require("./helpers/http");
+const { fetchCsrf, csrfHeaders } = require("./helpers/csrf");
 
 function waitForEvent(socket, eventName, predicate = () => true, timeout = 5000) {
   return new Promise((resolve, reject) => {
@@ -34,6 +35,13 @@ function waitForEvent(socket, eventName, predicate = () => true, timeout = 5000)
   });
 }
 
+function closeWithTimeout(closer, timeoutMs = 3000) {
+  return Promise.race([
+    new Promise((resolve) => closer(resolve)),
+    new Promise((resolve) => setTimeout(resolve, timeoutMs))
+  ]);
+}
+
 function emitWithAck(socket, eventName, ...args) {
   return new Promise((resolve) => {
     if (args.length === 0) {
@@ -46,9 +54,10 @@ function emitWithAck(socket, eventName, ...args) {
 
 async function registerUser(serverUrl, username, email) {
   const password = "secret12345";
+  const csrf = await fetchCsrf(serverUrl);
   const registerResponse = await fetch(`${serverUrl}/api/auth/register`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: csrfHeaders(csrf.token, csrf.cookie),
     body: JSON.stringify({
       username,
       email,
@@ -102,6 +111,7 @@ async function run() {
     reconnection: false,
     auth: { token: tokenFromCookie(userB.cookie) }
   });
+  let clientC = null;
 
   try {
     await Promise.all([
@@ -181,20 +191,95 @@ async function run() {
     });
     assert.equal(historyAfterImage.messages.length, 2);
 
+    const wrongReceiver = await emitWithAck(clientA, "private_message", {
+      conversationId: sentAck.message.conversationId,
+      receiverId: userA.user.id,
+      type: "text",
+      message: "Sai người nhận"
+    });
+    assert.equal(wrongReceiver.ok, false);
+
+    const markReadOk = await emitWithAck(clientB, "mark_read", {
+      conversationId: sentAck.message.conversationId,
+      messageId: sentAck.message.id
+    });
+    assert.equal(markReadOk.ok, true);
+
+    const fakeMessageId = "00000000-0000-0000-0000-000000000099";
+    const markReadFake = await emitWithAck(clientB, "mark_read", {
+      conversationId: sentAck.message.conversationId,
+      messageId: fakeMessageId
+    });
+    assert.equal(markReadFake.ok, false);
+
+    const stampB = Date.now();
+    const userC = await registerUser(
+      url,
+      `user_c_${stampB}`,
+      `c_${stampB}@test.local`
+    );
+    clientC = createClient(url, {
+      transports: ["websocket"],
+      reconnection: false,
+      auth: { token: tokenFromCookie(userC.cookie) }
+    });
+    await waitForSocketConnect(clientC);
+    await emitWithAck(clientC, "join_chat");
+
+    const sentC = await emitWithAck(clientC, "private_message", {
+      receiverId: userA.user.id,
+      type: "text",
+      message: "Hội thoại khác"
+    });
+    assert.equal(sentC.ok, true);
+
+    const markReadWrongConv = await emitWithAck(clientB, "mark_read", {
+      conversationId: sentC.message.conversationId,
+      messageId: sentAck.message.id
+    });
+    assert.equal(markReadWrongConv.ok, false);
+
+    if (clientC) {
+      clientC.disconnect();
+      clientC = null;
+    }
+
+    const conversationRepository = require("../src/repositories/conversation.repository");
+    const raceResults = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        conversationRepository.findOrCreateDirectConversation(
+          userA.user.id,
+          userB.user.id
+        )
+      )
+    );
+    assert.ok(
+      raceResults.every((id) => id === raceResults[0]),
+      "Race findOrCreateDirectConversation phải trả cùng conversationId"
+    );
+
     console.log(
-      "Đã kiểm tra: auth socket, text/image DB, load history, reject fake upload."
+      "Đã kiểm tra: auth socket, text/image DB, load history, reject fake upload, mark_read, race conversation."
     );
   } finally {
     clearTimeout(guard);
     clientA.disconnect();
     clientB.disconnect();
-    await new Promise((resolve) => io.close(resolve));
-    await new Promise((resolve) => httpServer.close(resolve));
+    if (clientC) {
+      clientC.disconnect();
+    }
+    io.removeAllListeners();
+    await closeWithTimeout((resolve) => io.close(resolve));
+    await closeWithTimeout((resolve) => httpServer.close(resolve));
     await closePool();
   }
 }
 
-run().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+run()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

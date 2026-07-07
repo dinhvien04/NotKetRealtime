@@ -29,6 +29,7 @@
           <strong id="currentUsername"></strong>
         </div>
         <div class="avatar avatar-current" id="currentAvatar" aria-hidden="true"></div>
+        <button class="profile-button" id="profileButton" type="button">Hồ sơ</button>
         <button class="logout-button" id="logoutButton" type="button">Đăng xuất</button>
       </div>
     </header>
@@ -85,8 +86,14 @@
                 <p class="person-status" id="selectedStatus"><i></i>Đang trực tuyến</p>
               </div>
             </div>
+            <div class="chat-header-actions">
+              <input id="messageSearchInput" type="search" placeholder="Tìm tin nhắn..." maxlength="120" aria-label="Tìm tin nhắn">
+              <button id="messageSearchButton" type="button">Tìm</button>
+            </div>
             <span class="private-chip">Cuộc trò chuyện riêng</span>
           </header>
+
+          <div class="search-results is-hidden" id="searchResults"></div>
 
           <div class="messages" id="messages" aria-live="polite">
             <div class="day-separator"><span>Hôm nay</span></div>
@@ -95,6 +102,11 @@
           <div class="typing-status is-hidden" id="typingStatus">
             <span id="typingText"></span>
             <i></i><i></i><i></i>
+          </div>
+
+          <div class="reply-preview is-hidden" id="replyPreview">
+            <span id="replyPreviewText"></span>
+            <button id="cancelReplyButton" type="button" aria-label="Hủy trả lời">×</button>
           </div>
 
           <form class="message-form" id="messageForm">
@@ -138,6 +150,33 @@
       <h2>Đã mất kết nối</h2>
       <p>Ứng dụng đang thử kết nối lại với máy chủ. Tin nhắn sẽ tiếp tục khi kết nối được khôi phục.</p>
       <span class="reconnecting"><i></i>Đang kết nối lại...</span>
+    </div>
+  </div>
+
+  <div class="profile-modal is-hidden" id="profileModal" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle">
+    <div class="profile-modal-card">
+      <div class="profile-modal-header">
+        <h2 id="profileModalTitle">Hồ sơ của bạn</h2>
+        <button class="profile-close-button" id="profileCloseButton" type="button" aria-label="Đóng">×</button>
+      </div>
+      <form id="profileForm" class="profile-form" novalidate>
+        <label for="profileDisplayName">Tên hiển thị</label>
+        <input id="profileDisplayName" name="displayName" type="text" maxlength="80">
+        <label for="profileBio">Bio</label>
+        <textarea id="profileBio" name="bio" maxlength="280" rows="3"></textarea>
+        <label for="profileEmail">Email</label>
+        <input id="profileEmail" name="email" type="email">
+        <label for="profileAvatarFile">Ảnh đại diện</label>
+        <input id="profileAvatarFile" name="avatar" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+        <label for="profileOldPassword">Mật khẩu hiện tại</label>
+        <input id="profileOldPassword" name="oldPassword" type="password" autocomplete="current-password">
+        <label for="profileNewPassword">Mật khẩu mới</label>
+        <input id="profileNewPassword" name="password" type="password" autocomplete="new-password">
+        <label for="profileConfirmPassword">Xác nhận mật khẩu mới</label>
+        <input id="profileConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password">
+        <p class="form-error" id="profileError" role="alert"></p>
+        <button class="home-join-button" id="profileSaveButton" type="submit">Lưu hồ sơ</button>
+      </form>
     </div>
   </div>
 

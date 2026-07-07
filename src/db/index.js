@@ -52,10 +52,17 @@ async function withTransaction(callback) {
 }
 
 async function closePool() {
-  if (pool) {
-    await pool.end();
-    pool = null;
+  if (!pool) {
+    return;
   }
+
+  const currentPool = pool;
+  pool = null;
+
+  await Promise.race([
+    currentPool.end(),
+    new Promise((resolve) => setTimeout(resolve, 5000))
+  ]);
 }
 
 module.exports = {

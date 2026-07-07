@@ -1,5 +1,6 @@
 const config = require("../config/env");
 const messageRepository = require("../repositories/message.repository");
+const messageService = require("../services/message.service");
 const { isAllowedMimeType, getKindFromMimeType } = require("../utils/mime");
 const { sanitizeFileName } = require("../utils/filename");
 
@@ -58,6 +59,10 @@ async function createMessage({
   payload = {}
 }) {
   const type = normalizeType(payload.type, payload.mimeType);
+  const replyToMessageId = await messageService.validateReplyMessage(
+    conversationId,
+    payload.replyToMessageId || null
+  );
 
   if (type === "text") {
     const body = validateTextMessage(payload);
@@ -67,7 +72,8 @@ async function createMessage({
       senderName,
       receiverId,
       type: "text",
-      body
+      body,
+      replyToMessageId
     });
   }
 
@@ -83,7 +89,8 @@ async function createMessage({
     fileKey: fileMeta.fileKey,
     fileName: fileMeta.fileName,
     mimeType: fileMeta.mimeType,
-    fileSize: fileMeta.size
+    fileSize: fileMeta.size,
+    replyToMessageId
   });
 }
 

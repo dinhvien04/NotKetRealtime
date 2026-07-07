@@ -1,5 +1,8 @@
 const { query, withTransaction } = require("../db");
 
+const UNIQUE_VIOLATION = "23505";
+const MAX_CREATE_RETRIES = 3;
+
 async function findDirectConversation(userA, userB) {
   const userLow = userA < userB ? userA : userB;
   const userHigh = userA < userB ? userB : userA;
@@ -12,43 +15,82 @@ async function findDirectConversation(userA, userB) {
   return result.rows[0]?.conversation_id || null;
 }
 
-async function findOrCreateDirectConversation(userA, userB) {
-  const existingId = await findDirectConversation(userA, userB);
-  if (existingId) {
-    return existingId;
-  }
+async function createDirectConversation(userA, userB) {
+  const userLow = userA < userB ? userA : userB;
+  const userHigh = userA < userB ? userB : userA;
 
   return withTransaction(async (client) => {
-    const again = await client.query(
+    const existing = await client.query(
       `SELECT conversation_id FROM direct_conversations
        WHERE user_low = $1 AND user_high = $2`,
-      [userA < userB ? userA : userB, userA < userB ? userB : userA]
+      [userLow, userHigh]
     );
-    if (again.rows[0]) {
-      return again.rows[0].conversation_id;
+    if (existing.rows[0]) {
+      return existing.rows[0].conversation_id;
     }
 
     const conversation = await client.query(
       `INSERT INTO conversations (type) VALUES ('direct') RETURNING id`
     );
     const conversationId = conversation.rows[0].id;
-    const userLow = userA < userB ? userA : userB;
-    const userHigh = userA < userB ? userB : userA;
 
-    await client.query(
+    const inserted = await client.query(
       `INSERT INTO direct_conversations (conversation_id, user_low, user_high)
-       VALUES ($1, $2, $3)`,
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_low, user_high) DO NOTHING
+       RETURNING conversation_id`,
       [conversationId, userLow, userHigh]
     );
 
+    if (!inserted.rows[0]) {
+      const winner = await client.query(
+        `SELECT conversation_id FROM direct_conversations
+         WHERE user_low = $1 AND user_high = $2`,
+        [userLow, userHigh]
+      );
+      return winner.rows[0].conversation_id;
+    }
+
     await client.query(
       `INSERT INTO conversation_participants (conversation_id, user_id)
-       VALUES ($1, $2), ($1, $3)`,
+       VALUES ($1, $2), ($1, $3)
+       ON CONFLICT DO NOTHING`,
       [conversationId, userA, userB]
     );
 
-    return conversationId;
+    return inserted.rows[0].conversation_id;
   });
+}
+
+async function findOrCreateDirectConversation(userA, userB) {
+  for (let attempt = 0; attempt < MAX_CREATE_RETRIES; attempt++) {
+    const existingId = await findDirectConversation(userA, userB);
+    if (existingId) {
+      return existingId;
+    }
+
+    try {
+      return await createDirectConversation(userA, userB);
+    } catch (error) {
+      if (error.code !== UNIQUE_VIOLATION) {
+        throw error;
+      }
+    }
+  }
+
+  const finalId = await findDirectConversation(userA, userB);
+  if (!finalId) {
+    throw new Error("Không thể tạo hội thoại direct.");
+  }
+  return finalId;
+}
+
+async function conversationExists(conversationId) {
+  const result = await query(
+    `SELECT 1 FROM conversations WHERE id = $1`,
+    [conversationId]
+  );
+  return result.rowCount > 0;
 }
 
 async function isParticipant(conversationId, userId) {
@@ -79,6 +121,14 @@ async function getOtherParticipant(conversationId, userId) {
   };
 }
 
+async function getParticipantIds(conversationId) {
+  const result = await query(
+    `SELECT user_id FROM conversation_participants WHERE conversation_id = $1`,
+    [conversationId]
+  );
+  return result.rows.map((row) => row.user_id);
+}
+
 async function listForUser(userId) {
   const result = await query(
     `SELECT
@@ -93,7 +143,20 @@ async function listForUser(userId) {
        other_user.id AS other_user_id,
        other_user.username AS other_username,
        other_user.display_name AS other_display_name,
-       cp.last_read_message_id
+       cp.last_read_message_id,
+       (
+         SELECT COUNT(*)::int
+         FROM messages um
+         WHERE um.conversation_id = c.id
+           AND um.deleted_at IS NULL
+           AND um.sender_id <> $1
+           AND (
+             cp.last_read_message_id IS NULL
+             OR um.created_at > (
+               SELECT created_at FROM messages WHERE id = cp.last_read_message_id
+             )
+           )
+       ) AS unread_count
      FROM conversation_participants cp
      JOIN conversations c ON c.id = cp.conversation_id
      JOIN conversation_participants other_cp
@@ -111,33 +174,26 @@ async function listForUser(userId) {
     [userId]
   );
 
-  return result.rows.map((row) => {
-    const unread =
-      row.last_message_id &&
-      row.last_message_sender_id !== userId &&
-      (!row.last_read_message_id ||
-        row.last_message_id !== row.last_read_message_id);
-    return {
-      conversationId: row.conversation_id,
-      otherUser: {
-        id: row.other_user_id,
-        username: row.other_username,
-        displayName: row.other_display_name || row.other_username
-      },
-      lastMessage: row.last_message_id
-        ? {
-            id: row.last_message_id,
-            type: row.last_message_type,
-            body: row.last_message_body || "",
-            fileName: row.last_message_file_name || "",
-            createdAt: row.last_message_created_at,
-            senderId: row.last_message_sender_id
-          }
-        : null,
-      unreadCount: unread ? 1 : 0,
-      updatedAt: row.updated_at
-    };
-  });
+  return result.rows.map((row) => ({
+    conversationId: row.conversation_id,
+    otherUser: {
+      id: row.other_user_id,
+      username: row.other_username,
+      displayName: row.other_display_name || row.other_username
+    },
+    lastMessage: row.last_message_id
+      ? {
+          id: row.last_message_id,
+          type: row.last_message_type,
+          body: row.last_message_body || "",
+          fileName: row.last_message_file_name || "",
+          createdAt: row.last_message_created_at,
+          senderId: row.last_message_sender_id
+        }
+      : null,
+    unreadCount: row.unread_count || 0,
+    updatedAt: row.updated_at
+  }));
 }
 
 async function markRead(conversationId, userId, messageId) {
@@ -160,8 +216,10 @@ async function touchConversation(conversationId, client = null) {
 module.exports = {
   findDirectConversation,
   findOrCreateDirectConversation,
+  conversationExists,
   isParticipant,
   getOtherParticipant,
+  getParticipantIds,
   listForUser,
   markRead,
   touchConversation

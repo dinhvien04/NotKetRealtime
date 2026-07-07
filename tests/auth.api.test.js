@@ -6,6 +6,7 @@ const http = require("http");
 const app = require("../src/app");
 const { getDatabaseError, closePool } = require("../src/db");
 const { extractCookie } = require("./helpers/http");
+const { fetchCsrf, csrfHeaders, mergeCookies } = require("./helpers/csrf");
 
 async function run() {
   if (getDatabaseError()) {
@@ -22,9 +23,11 @@ async function run() {
   const password = "secret12345";
 
   try {
+    const csrf = await fetchCsrf(baseUrl);
+
     const duplicate = await fetch(`${baseUrl}/api/auth/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: csrfHeaders(csrf.token, csrf.cookie),
       body: JSON.stringify({
         username,
         email,
@@ -37,7 +40,7 @@ async function run() {
 
     const duplicateAgain = await fetch(`${baseUrl}/api/auth/register`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: csrfHeaders(csrf.token, csrf.cookie),
       body: JSON.stringify({
         username,
         email,
@@ -50,7 +53,7 @@ async function run() {
 
     const badLogin = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: csrfHeaders(csrf.token, csrf.cookie),
       body: JSON.stringify({
         usernameOrEmail: username,
         password: "wrong-password"
@@ -61,14 +64,15 @@ async function run() {
 
     const login = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: csrfHeaders(csrf.token, csrf.cookie),
       body: JSON.stringify({
         usernameOrEmail: username,
         password
       })
     });
     const loginData = await login.json();
-    const cookie = extractCookie(login);
+    const authCookie = extractCookie(login);
+    const cookie = mergeCookies(csrf.cookie, authCookie);
     assert.equal(loginData.ok, true);
     assert.ok(cookie);
 
@@ -91,7 +95,11 @@ async function run() {
   }
 }
 
-run().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+run()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

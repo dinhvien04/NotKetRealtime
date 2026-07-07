@@ -14,6 +14,9 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 ]);
+const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "👏"];
+const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+const DELETED_LABEL = "Tin nhắn đã bị xóa";
 const socket = page === "chat" ? io({ withCredentials: true }) : null;
 
 const elements = {
@@ -50,12 +53,37 @@ const elements = {
   connectionOverlay: document.getElementById("connectionOverlay"),
   toastRegion: document.getElementById("toastRegion"),
   logoutButton: document.getElementById("logoutButton"),
+  profileButton: document.getElementById("profileButton"),
+  profileModal: document.getElementById("profileModal"),
+  profileCloseButton: document.getElementById("profileCloseButton"),
+  profileForm: document.getElementById("profileForm"),
+  profileDisplayName: document.getElementById("profileDisplayName"),
+  profileBio: document.getElementById("profileBio"),
+  profileEmail: document.getElementById("profileEmail"),
+  profileAvatarFile: document.getElementById("profileAvatarFile"),
+  profileOldPassword: document.getElementById("profileOldPassword"),
+  profileNewPassword: document.getElementById("profileNewPassword"),
+  profileConfirmPassword: document.getElementById("profileConfirmPassword"),
+  profileError: document.getElementById("profileError"),
+  forgotTab: document.getElementById("forgotTab"),
+  forgotForm: document.getElementById("forgotForm"),
+  forgotError: document.getElementById("forgotError"),
+  forgotHint: document.getElementById("forgotHint"),
+  forgotSubmitButton: document.getElementById("forgotSubmitButton"),
+  openForgotFromLogin: document.getElementById("openForgotFromLogin"),
   mobileMenuButton: document.getElementById("mobileMenuButton"),
   sidebar: document.getElementById("sidebar"),
-  sidebarBackdrop: document.getElementById("sidebarBackdrop")
+  sidebarBackdrop: document.getElementById("sidebarBackdrop"),
+  messageSearchInput: document.getElementById("messageSearchInput"),
+  messageSearchButton: document.getElementById("messageSearchButton"),
+  searchResults: document.getElementById("searchResults"),
+  replyPreview: document.getElementById("replyPreview"),
+  replyPreviewText: document.getElementById("replyPreviewText"),
+  cancelReplyButton: document.getElementById("cancelReplyButton")
 };
 
 const state = {
+  csrfToken: null,
   currentUser: null,
   selectedUser: null,
   selectedConversationId: null,
@@ -70,16 +98,48 @@ const state = {
   selectedFile: null,
   isUploading: false,
   nextCursor: null,
-  isLoadingOlder: false
+  isLoadingOlder: false,
+  hasMoreMessages: false,
+  loadedMessageIds: new Set(),
+  messageRows: new Map(),
+  replyTo: null,
+  forgotResetTokenId: null,
+  forgotStep: "request"
 };
 
+async function ensureCsrfToken() {
+  if (state.csrfToken) {
+    return state.csrfToken;
+  }
+
+  const response = await fetch("/api/csrf-token", { credentials: "include" });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok || !data.csrfToken) {
+    throw new Error(data.error || "Không thể lấy CSRF token.");
+  }
+
+  state.csrfToken = data.csrfToken;
+  return state.csrfToken;
+}
+
 async function api(path, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  const headers = {
+    ...(options.headers || {})
+  };
+
+  if (method !== "GET" && method !== "HEAD") {
+    const csrfToken = await ensureCsrfToken();
+    headers["X-CSRF-Token"] = csrfToken;
+  }
+
+  if (!headers["Content-Type"] && options.body && typeof options.body === "string") {
+    headers["Content-Type"] = "application/json";
+  }
+
   const response = await fetch(path, {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    },
+    headers,
     ...options
   });
   const data = await response.json().catch(() => ({}));
@@ -98,8 +158,17 @@ function getInitials(name = "") {
     .join("");
 }
 
-function setAvatar(element, name) {
-  if (element) element.textContent = getInitials(name);
+function setAvatar(element, name, avatarUrl) {
+  if (!element) return;
+  if (avatarUrl) {
+    element.textContent = "";
+    element.style.backgroundImage = `url("${avatarUrl}")`;
+    element.style.backgroundSize = "cover";
+    element.style.backgroundPosition = "center";
+    return;
+  }
+  element.style.backgroundImage = "";
+  element.textContent = getInitials(name);
 }
 
 function formatFileSize(bytes) {
@@ -141,7 +210,343 @@ function createDaySeparator() {
 }
 
 function clearMessages() {
+  state.loadedMessageIds.clear();
+  state.messageRows.clear();
   elements.messages.replaceChildren(createDaySeparator());
+}
+
+function getMessageBody(message) {
+  return message.message || message.body || message.text || "";
+}
+
+function getMessagePreview(message) {
+  if (message.isDeleted) return DELETED_LABEL;
+  if (message.type === "image") return "Ảnh";
+  if (message.type === "file") return message.fileName || "File";
+  const body = getMessageBody(message);
+  return body.length > 80 ? `${body.slice(0, 80)}…` : body;
+}
+
+function canEditOwnMessage(message) {
+  if (!message || message.isDeleted || message.type !== "text") return false;
+  if (message.senderId !== state.currentUser?.id) return false;
+  const createdAt = new Date(message.createdAt).getTime();
+  return Date.now() - createdAt <= MESSAGE_EDIT_WINDOW_MS;
+}
+
+function canDeleteOwnMessage(message) {
+  if (!message || message.isDeleted) return false;
+  return message.senderId === state.currentUser?.id;
+}
+
+function setReplyTarget(message) {
+  state.replyTo = {
+    id: message.id,
+    preview: getMessagePreview(message),
+    senderName: message.senderName
+  };
+  if (elements.replyPreviewText) {
+    elements.replyPreviewText.textContent = `Trả lời ${message.senderName}: ${state.replyTo.preview}`;
+  }
+  elements.replyPreview?.classList.remove("is-hidden");
+  elements.messageInput?.focus();
+}
+
+function clearReplyTarget() {
+  state.replyTo = null;
+  elements.replyPreview?.classList.add("is-hidden");
+}
+
+function hideSearchResults() {
+  elements.searchResults?.classList.add("is-hidden");
+  elements.searchResults?.replaceChildren();
+}
+
+function renderReactionChips(container, message) {
+  container.replaceChildren();
+  const reactions = Array.isArray(message.reactions) ? message.reactions : [];
+  if (!reactions.length) {
+    container.classList.add("is-hidden");
+    return;
+  }
+  container.classList.remove("is-hidden");
+  const grouped = new Map();
+  for (const reaction of reactions) {
+    const key = reaction.emoji;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(reaction);
+  }
+  for (const [emoji, items] of grouped) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "message-reaction-chip";
+    const reacted = items.some((item) => item.userId === state.currentUser?.id);
+    if (reacted) chip.classList.add("is-own");
+    chip.textContent = `${emoji} ${items.length}`;
+    chip.title = items
+      .map((item) => item.displayName || item.username || "User")
+      .join(", ");
+    chip.addEventListener("click", () => toggleReaction(message.id, emoji, reacted));
+    container.append(chip);
+  }
+}
+
+function createMessageActions(message) {
+  const actions = document.createElement("div");
+  actions.className = "message-actions";
+  if (message.isDeleted) return actions;
+
+  const replyBtn = document.createElement("button");
+  replyBtn.type = "button";
+  replyBtn.className = "message-action-btn";
+  replyBtn.textContent = "Trả lời";
+  replyBtn.addEventListener("click", () => setReplyTarget(message));
+  actions.append(replyBtn);
+
+  const reactBtn = document.createElement("button");
+  reactBtn.type = "button";
+  reactBtn.className = "message-action-btn";
+  reactBtn.textContent = "React";
+  reactBtn.addEventListener("click", () => openReactionPicker(message.id));
+  actions.append(reactBtn);
+
+  if (canEditOwnMessage(message)) {
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "message-action-btn";
+    editBtn.textContent = "Sửa";
+    editBtn.addEventListener("click", () => editMessage(message));
+    actions.append(editBtn);
+  }
+
+  if (canDeleteOwnMessage(message)) {
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "message-action-btn";
+    deleteBtn.textContent = "Xóa";
+    deleteBtn.addEventListener("click", () => deleteMessage(message.id));
+    actions.append(deleteBtn);
+  }
+
+  return actions;
+}
+
+function fillMessageBubble(bubble, message) {
+  bubble.replaceChildren();
+  const messageType = message.type || "text";
+  bubble.className = `message-bubble${messageType === "image" ? " message-bubble-image" : ""}${messageType === "file" ? " message-bubble-file" : ""}`;
+
+  if (message.isDeleted) {
+    bubble.classList.add("is-deleted");
+    bubble.textContent = DELETED_LABEL;
+    return;
+  }
+
+  if (message.replyToMessageId) {
+    const quote = document.createElement("div");
+    quote.className = "message-reply-quote";
+    quote.textContent = "Trả lời tin nhắn";
+    bubble.append(quote);
+  }
+
+  if (messageType === "image") bubble.append(createImageBubble(message));
+  else if (messageType === "file") bubble.append(createFileBubble(message));
+  else bubble.append(document.createTextNode(getMessageBody(message)));
+
+  if (message.isEdited) {
+    const edited = document.createElement("span");
+    edited.className = "message-edited-tag";
+    edited.textContent = " • đã chỉnh sửa";
+    bubble.append(edited);
+  }
+}
+
+function createMessageRow(message) {
+  const isOwn = message.senderId === state.currentUser?.id;
+  const row = document.createElement("article");
+  const bubble = document.createElement("div");
+  const reactions = document.createElement("div");
+  const meta = document.createElement("span");
+  row.className = `message-row${isOwn ? " is-own" : ""}`;
+  row.dataset.messageId = message.id;
+  fillMessageBubble(bubble, message);
+  reactions.className = "message-reactions is-hidden";
+  renderReactionChips(reactions, message);
+  meta.className = "message-meta";
+  meta.textContent = isOwn
+    ? `${message.time} • Đã gửi`
+    : `${message.senderName} • ${message.time}`;
+  row.append(bubble, reactions, createMessageActions(message), meta);
+  return row;
+}
+
+function updateMessageRow(message) {
+  const row = state.messageRows.get(message.id);
+  if (!row) return;
+  const bubble = row.querySelector(".message-bubble");
+  const reactions = row.querySelector(".message-reactions");
+  const actions = row.querySelector(".message-actions");
+  if (bubble) fillMessageBubble(bubble, message);
+  if (reactions) renderReactionChips(reactions, message);
+  if (actions) actions.replaceWith(createMessageActions(message));
+}
+
+function openReactionPicker(messageId) {
+  const picker = document.createElement("div");
+  picker.className = "reaction-picker";
+  for (const emoji of ALLOWED_REACTIONS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "reaction-btn";
+    btn.textContent = emoji;
+    btn.addEventListener("click", () => {
+      addReaction(messageId, emoji);
+      picker.remove();
+    });
+    picker.append(btn);
+  }
+  const row = state.messageRows.get(messageId);
+  if (row) {
+    row.append(picker);
+    window.setTimeout(() => picker.remove(), 4000);
+  }
+}
+
+function emitSocketAck(eventName, payload) {
+  return new Promise((resolve) => {
+    socket.emit(eventName, payload, resolve);
+  });
+}
+
+async function editMessage(message) {
+  const nextText = window.prompt("Chỉnh sửa tin nhắn:", getMessageBody(message));
+  if (nextText === null) return;
+  const trimmed = nextText.trim();
+  if (!trimmed) {
+    showToast("Nội dung không hợp lệ.", "error");
+    return;
+  }
+  const response = await emitSocketAck("edit_message", {
+    messageId: message.id,
+    body: trimmed
+  });
+  if (!response?.ok) {
+    showToast(response?.error || "Không thể chỉnh sửa.", "error");
+    return;
+  }
+  if (response.message) updateMessageRow(response.message);
+}
+
+async function deleteMessage(messageId) {
+  if (!window.confirm("Xóa tin nhắn này?")) return;
+  const response = await emitSocketAck("delete_message", { messageId });
+  if (!response?.ok) {
+    showToast(response?.error || "Không thể xóa.", "error");
+    return;
+  }
+  if (response.message) updateMessageRow(response.message);
+}
+
+async function addReaction(messageId, emoji) {
+  const response = await emitSocketAck("add_reaction", { messageId, emoji });
+  if (!response?.ok) {
+    showToast(response?.error || "Không thể thêm reaction.", "error");
+  }
+}
+
+async function toggleReaction(messageId, emoji, hasReacted) {
+  const eventName = hasReacted ? "remove_reaction" : "add_reaction";
+  const response = await emitSocketAck(eventName, { messageId, emoji });
+  if (!response?.ok) {
+    showToast(response?.error || "Không thể cập nhật reaction.", "error");
+  }
+}
+
+async function runMessageSearch() {
+  if (!state.selectedConversationId) return;
+  const queryText = elements.messageSearchInput?.value.trim() || "";
+  if (!queryText) {
+    hideSearchResults();
+    return;
+  }
+  try {
+    const params = new URLSearchParams({
+      conversationId: state.selectedConversationId,
+      q: queryText,
+      limit: "20"
+    });
+    const result = await api(`/api/messages/search?${params.toString()}`);
+    renderSearchResults(result.messages || []);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+function renderSearchResults(messages) {
+  if (!elements.searchResults) return;
+  elements.searchResults.replaceChildren();
+  if (!messages.length) {
+    const empty = document.createElement("p");
+    empty.textContent = "Không tìm thấy tin nhắn.";
+    elements.searchResults.append(empty);
+    elements.searchResults.classList.remove("is-hidden");
+    return;
+  }
+  for (const message of messages) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "search-result-item";
+    button.textContent = `${message.senderName}: ${getMessagePreview(message)}`;
+    button.addEventListener("click", () => {
+      hideSearchResults();
+      const row = state.messageRows.get(message.id);
+      if (row) {
+        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        row.classList.add("is-highlighted");
+        window.setTimeout(() => row.classList.remove("is-highlighted"), 2000);
+      }
+    });
+    elements.searchResults.append(button);
+  }
+  elements.searchResults.classList.remove("is-hidden");
+}
+
+function trackMessageRow(message, row, { prepend = false } = {}) {
+  if (state.loadedMessageIds.has(message.id)) return false;
+  state.loadedMessageIds.add(message.id);
+  state.messageRows.set(message.id, row);
+  if (prepend) elements.messages.prepend(row);
+  else elements.messages.append(row);
+  return true;
+}
+
+function appendMessage(message) {
+  if (state.loadedMessageIds.has(message.id)) {
+    updateMessageRow(message);
+    return;
+  }
+  const row = createMessageRow(message);
+  trackMessageRow(message, row);
+  elements.messages.scrollTop = elements.messages.scrollHeight;
+}
+
+function prependMessages(messages) {
+  const previousHeight = elements.messages.scrollHeight;
+  let added = 0;
+  for (const message of messages) {
+    if (state.loadedMessageIds.has(message.id)) continue;
+    const row = createMessageRow(message);
+    state.loadedMessageIds.add(message.id);
+    state.messageRows.set(message.id, row);
+    const firstMessage = elements.messages.querySelector(".message-row");
+    if (firstMessage) elements.messages.insertBefore(row, firstMessage);
+    else elements.messages.append(row);
+    added += 1;
+  }
+  if (added > 0) {
+    const delta = elements.messages.scrollHeight - previousHeight;
+    elements.messages.scrollTop += delta;
+  }
 }
 
 function createImageBubble(message) {
@@ -195,26 +600,6 @@ function createFileBubble(message) {
   copy.append(name, size, action);
   card.append(icon, copy);
   return card;
-}
-
-function appendMessage(message) {
-  const isOwn = message.senderId === state.currentUser?.id;
-  const row = document.createElement("article");
-  const bubble = document.createElement("div");
-  const meta = document.createElement("span");
-  const messageType = message.type || "text";
-  row.className = `message-row${isOwn ? " is-own" : ""}`;
-  bubble.className = `message-bubble${messageType === "image" ? " message-bubble-image" : ""}${messageType === "file" ? " message-bubble-file" : ""}`;
-  if (messageType === "image") bubble.append(createImageBubble(message));
-  else if (messageType === "file") bubble.append(createFileBubble(message));
-  else bubble.textContent = message.message || message.body || message.text || "";
-  meta.className = "message-meta";
-  meta.textContent = isOwn
-    ? `${message.time} • Đã gửi`
-    : `${message.senderName} • ${message.time}`;
-  row.append(bubble, meta);
-  elements.messages.append(row);
-  elements.messages.scrollTop = elements.messages.scrollHeight;
 }
 
 function appendSystemMessage(text) {
@@ -347,6 +732,9 @@ function selectConversation(conversation) {
   state.selectedConversationId = conversation.conversationId;
   state.selectedUser = conversation.otherUser;
   state.unread.delete(conversation.otherUser.id);
+  clearReplyTarget();
+  hideSearchResults();
+  if (elements.messageSearchInput) elements.messageSearchInput.value = "";
   clearSelectedFile();
   elements.emptyState.classList.add("is-hidden");
   elements.chatPanel.classList.remove("is-hidden");
@@ -383,8 +771,9 @@ function startChatWithOnlineUser(user) {
 }
 
 function loadMessages({ reset = false } = {}) {
-  if (!state.selectedConversationId) return;
+  if (!state.selectedConversationId || state.isLoadingOlder) return;
 
+  state.isLoadingOlder = !reset;
   socket.emit(
     "load_messages",
     {
@@ -393,19 +782,23 @@ function loadMessages({ reset = false } = {}) {
       cursor: reset ? null : state.nextCursor
     },
     (response) => {
+      state.isLoadingOlder = false;
       if (!response?.ok) {
         appendSystemMessage(response?.error || "Không thể tải tin nhắn.");
         return;
       }
 
       if (reset) clearMessages();
-      response.messages.forEach(appendMessage);
+      if (reset) response.messages.forEach(appendMessage);
+      else prependMessages(response.messages);
+
       state.nextCursor = response.nextCursor;
+      state.hasMoreMessages = Boolean(response.hasMore);
       if (response.otherUser) {
         state.selectedUser = response.otherUser;
       }
       const lastMessage = response.messages.at(-1);
-      if (lastMessage) {
+      if (reset && lastMessage) {
         socket.emit("mark_read", {
           conversationId: state.selectedConversationId,
           messageId: lastMessage.id
@@ -453,11 +846,15 @@ function emitPrivateMessage(payload) {
 }
 
 async function uploadSelectedFile(file) {
+  const csrfToken = await ensureCsrfToken();
   const formData = new FormData();
   formData.append("file", file);
   const response = await fetch("/api/uploads", {
     method: "POST",
     credentials: "include",
+    headers: {
+      "X-CSRF-Token": csrfToken
+    },
     body: formData
   });
   const result = await response.json();
@@ -476,7 +873,8 @@ async function sendFileMessage(fileMeta) {
     fileKey: fileMeta.fileKey,
     fileName: fileMeta.fileName,
     mimeType: fileMeta.mimeType,
-    size: fileMeta.size
+    size: fileMeta.size,
+    replyToMessageId: state.replyTo?.id || null
   });
   if (!response?.ok) throw new Error(response?.error || "Không thể gửi file.");
   if (response.message?.conversationId) {
@@ -490,9 +888,11 @@ async function sendTextMessage(text) {
     receiverId: state.selectedUser.id,
     conversationId: state.selectedConversationId,
     type: "text",
-    message: text
+    message: text,
+    replyToMessageId: state.replyTo?.id || null
   });
   if (!response?.ok) throw new Error(response?.error || "Không thể gửi tin nhắn.");
+  clearReplyTarget();
   if (response.message?.conversationId) {
     state.selectedConversationId = response.message.conversationId;
     loadConversations();
@@ -529,6 +929,7 @@ async function handleMessageSubmit() {
       const fileMeta = await uploadSelectedFile(file);
       await sendFileMessage(fileMeta);
       clearSelectedFile();
+      clearReplyTarget();
     }
     if (text) {
       await sendTextMessage(text);
@@ -549,12 +950,43 @@ async function handleMessageSubmit() {
 
 function switchAuthTab(tab) {
   const isLogin = tab === "login";
+  const isRegister = tab === "register";
+  const isForgot = tab === "forgot";
+
   elements.loginTab?.classList.toggle("is-active", isLogin);
-  elements.registerTab?.classList.toggle("is-active", !isLogin);
+  elements.registerTab?.classList.toggle("is-active", isRegister);
+  elements.forgotTab?.classList.toggle("is-active", isForgot);
   elements.loginTab?.setAttribute("aria-selected", String(isLogin));
-  elements.registerTab?.setAttribute("aria-selected", String(!isLogin));
+  elements.registerTab?.setAttribute("aria-selected", String(isRegister));
+  elements.forgotTab?.setAttribute("aria-selected", String(isForgot));
   elements.loginForm?.classList.toggle("is-hidden", !isLogin);
-  elements.registerForm?.classList.toggle("is-hidden", isLogin);
+  elements.registerForm?.classList.toggle("is-hidden", !isRegister);
+  elements.forgotForm?.classList.toggle("is-hidden", !isForgot);
+
+  if (isForgot) {
+    state.forgotStep = "request";
+    state.forgotResetTokenId = null;
+    if (elements.forgotSubmitButton) {
+      elements.forgotSubmitButton.querySelector("span").textContent = "Gửi OTP";
+    }
+    if (elements.forgotHint) {
+      elements.forgotHint.textContent =
+        "Bước 1: gửi OTP. Bước 2: nhập OTP + mật khẩu mới.";
+    }
+  }
+}
+
+function openProfileModal() {
+  if (!state.currentUser || !elements.profileModal) return;
+  elements.profileDisplayName.value = state.currentUser.displayName || "";
+  elements.profileBio.value = state.currentUser.bio || "";
+  elements.profileEmail.value = state.currentUser.email || "";
+  elements.profileError.textContent = "";
+  elements.profileModal.classList.remove("is-hidden");
+}
+
+function closeProfileModal() {
+  elements.profileModal?.classList.add("is-hidden");
 }
 
 if (page === "home") {
@@ -570,6 +1002,10 @@ if (page === "home") {
 
   elements.loginTab?.addEventListener("click", () => switchAuthTab("login"));
   elements.registerTab?.addEventListener("click", () => switchAuthTab("register"));
+  elements.forgotTab?.addEventListener("click", () => switchAuthTab("forgot"));
+  elements.openForgotFromLogin?.addEventListener("click", () =>
+    switchAuthTab("forgot")
+  );
 
   elements.loginForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -586,6 +1022,55 @@ if (page === "home") {
       window.location.href = "/chat";
     } catch (error) {
       elements.loginError.textContent = error.message;
+    }
+  });
+
+  elements.forgotForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    elements.forgotError.textContent = "";
+    const formData = new FormData(elements.forgotForm);
+    const email = String(formData.get("email") || "").trim();
+
+    try {
+      if (state.forgotStep === "request") {
+        const result = await api("/api/auth/forgot-password", {
+          method: "POST",
+          body: JSON.stringify({ email })
+        });
+        state.forgotStep = "reset";
+        if (elements.forgotSubmitButton) {
+          elements.forgotSubmitButton.querySelector("span").textContent =
+            "Đặt lại mật khẩu";
+        }
+        if (elements.forgotHint) {
+          elements.forgotHint.textContent = result.message;
+        }
+        showToast(result.message, "success");
+        return;
+      }
+
+      const verify = await api("/api/auth/verify-reset-otp", {
+        method: "POST",
+        body: JSON.stringify({
+          email,
+          otp: String(formData.get("otp") || "").trim()
+        })
+      });
+      state.forgotResetTokenId = verify.resetTokenId;
+
+      await api("/api/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({
+          resetTokenId: state.forgotResetTokenId,
+          password: formData.get("password"),
+          confirmPassword: formData.get("confirmPassword")
+        })
+      });
+
+      showToast("Đặt lại mật khẩu thành công. Vui lòng đăng nhập.", "success");
+      switchAuthTab("login");
+    } catch (error) {
+      elements.forgotError.textContent = error.message;
     }
   });
 
@@ -612,8 +1097,14 @@ if (page === "home") {
 
 if (page === "chat") {
   api("/api/auth/me")
-    .then((data) => {
+    .then(async (data) => {
       state.currentUser = data.user;
+      try {
+        const profile = await api("/api/users/me");
+        state.currentUser = profile.user;
+      } catch (_error) {
+        // fallback auth/me profile
+      }
       elements.currentUsername.textContent =
         data.user.displayName || data.user.username;
       setAvatar(
@@ -633,6 +1124,26 @@ if (page === "chat") {
   elements.messageForm.addEventListener("submit", (event) => {
     event.preventDefault();
     handleMessageSubmit();
+  });
+
+  elements.messageSearchButton?.addEventListener("click", runMessageSearch);
+  elements.messageSearchInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      runMessageSearch();
+    }
+  });
+  elements.cancelReplyButton?.addEventListener("click", clearReplyTarget);
+
+  elements.messages?.addEventListener("scroll", () => {
+    if (
+      elements.messages.scrollTop < 80 &&
+      state.hasMoreMessages &&
+      !state.isLoadingOlder &&
+      state.selectedConversationId
+    ) {
+      loadMessages({ reset: false });
+    }
   });
 
   elements.attachButton?.addEventListener("click", () => {
@@ -675,6 +1186,85 @@ if (page === "chat") {
         });
       }
     }, 1200);
+  });
+
+  elements.profileButton?.addEventListener("click", openProfileModal);
+  elements.profileCloseButton?.addEventListener("click", closeProfileModal);
+  elements.profileModal?.addEventListener("click", (event) => {
+    if (event.target === elements.profileModal) {
+      closeProfileModal();
+    }
+  });
+
+  elements.profileForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    elements.profileError.textContent = "";
+
+    try {
+      const updated = await api("/api/users/me", {
+        method: "PATCH",
+        body: JSON.stringify({
+          displayName: elements.profileDisplayName.value,
+          bio: elements.profileBio.value,
+          email: elements.profileEmail.value
+        })
+      });
+      state.currentUser = updated.user;
+      elements.currentUsername.textContent =
+        updated.user.displayName || updated.user.username;
+      setAvatar(
+        elements.currentAvatar,
+        updated.user.displayName || updated.user.username,
+        updated.user.avatarUrl
+      );
+
+      const avatarFile = elements.profileAvatarFile?.files?.[0];
+      if (avatarFile) {
+        const csrfToken = await ensureCsrfToken();
+        const formData = new FormData();
+        formData.append("avatar", avatarFile);
+        const response = await fetch("/api/users/me/avatar", {
+          method: "POST",
+          credentials: "include",
+          headers: { "X-CSRF-Token": csrfToken },
+          body: formData
+        });
+        const avatarData = await response.json();
+        if (!response.ok || !avatarData.ok) {
+          throw new Error(avatarData.error || "Không thể upload ảnh đại diện.");
+        }
+        state.currentUser = avatarData.user;
+        setAvatar(
+          elements.currentAvatar,
+          avatarData.user.displayName || avatarData.user.username,
+          avatarData.user.avatarUrl
+        );
+      }
+
+      const oldPassword = elements.profileOldPassword.value;
+      const newPassword = elements.profileNewPassword.value;
+      const confirmPassword = elements.profileConfirmPassword.value;
+      if (oldPassword || newPassword || confirmPassword) {
+        await api("/api/users/me/change-password", {
+          method: "POST",
+          body: JSON.stringify({
+            oldPassword,
+            password: newPassword,
+            confirmPassword
+          })
+        });
+        showToast("Đổi mật khẩu thành công. Vui lòng đăng nhập lại.", "success");
+        closeProfileModal();
+        socket.disconnect();
+        window.location.href = "/";
+        return;
+      }
+
+      showToast("Đã cập nhật hồ sơ.", "success");
+      closeProfileModal();
+    } catch (error) {
+      elements.profileError.textContent = error.message;
+    }
   });
 
   elements.logoutButton.addEventListener("click", async () => {
@@ -751,6 +1341,30 @@ if (page === "chat") {
     if (state.selectedConversationId === conversationId) {
       elements.typingStatus.classList.add("is-hidden");
     }
+  });
+
+  socket.on("message_edited", ({ conversationId, message }) => {
+    if (conversationId !== state.selectedConversationId || !message) return;
+    updateMessageRow(message);
+  });
+
+  socket.on("message_deleted", ({ conversationId, message }) => {
+    if (conversationId !== state.selectedConversationId || !message) return;
+    updateMessageRow(message);
+  });
+
+  socket.on("message_reaction_added", ({ conversationId, messageId, reactions }) => {
+    if (conversationId !== state.selectedConversationId) return;
+    const row = state.messageRows.get(messageId);
+    const reactionsEl = row?.querySelector(".message-reactions");
+    if (reactionsEl) renderReactionChips(reactionsEl, { id: messageId, reactions });
+  });
+
+  socket.on("message_reaction_removed", ({ conversationId, messageId, reactions }) => {
+    if (conversationId !== state.selectedConversationId) return;
+    const row = state.messageRows.get(messageId);
+    const reactionsEl = row?.querySelector(".message-reactions");
+    if (reactionsEl) renderReactionChips(reactionsEl, { id: messageId, reactions });
   });
 
   socket.on("user_offline", (user) => {

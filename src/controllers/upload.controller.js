@@ -1,4 +1,3 @@
-const presenceModel = require("../models/presence.model");
 const uploadModel = require("../models/upload.model");
 const { getSupabaseError } = require("../services/supabase.service");
 const { uploadChatFile } = require("../services/storage.service");
@@ -12,13 +11,6 @@ async function uploadFile(req, res) {
   const sender = req.user;
   if (!sender?.id) {
     return res.status(401).json({ ok: false, error: "Bạn cần đăng nhập." });
-  }
-
-  if (!presenceModel.isOnline(sender.id)) {
-    return res.status(403).json({
-      ok: false,
-      error: "Phiên socket không hợp lệ. Vui lòng tải lại trang chat."
-    });
   }
 
   if (!req.file) {
