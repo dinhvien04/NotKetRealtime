@@ -24,7 +24,7 @@
 | | Redis adapter + Redis presence (tùy chọn, multi-instance) |
 | | CI GitHub Actions |
 
-**Chưa triển khai:** AI chatbot (Gemini) — Phase 6 đã bỏ qua theo yêu cầu.
+**AI chatbot:** Tab AI Bot + API `/api/ai/sessions` (Gemini khi có `GEMINI_API_KEY`, mock trong test).
 
 ## Công nghệ
 

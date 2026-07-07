@@ -40,6 +40,16 @@ module.exports = {
   get clientOrigin() {
     return process.env.CLIENT_ORIGIN || "http://localhost:3000";
   },
+  get clientOrigins() {
+    const raw = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+    return raw
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  },
+  get csrfSecret() {
+    return process.env.CSRF_SECRET || "";
+  },
   get supabaseUrl() {
     return (
       process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || ""
@@ -128,8 +138,32 @@ module.exports = {
     const value = Number(process.env.MESSAGE_EDIT_WINDOW_MINUTES) || 15;
     return Number.isFinite(value) ? value : 15;
   },
+  get enableRedisAdapter() {
+    const raw = process.env.ENABLE_REDIS_ADAPTER;
+    if (raw === undefined || raw === "") {
+      return Boolean(process.env.REDIS_URL);
+    }
+    return raw === "true" || raw === "1";
+  },
   get redisUrl() {
     return process.env.REDIS_URL || "";
+  },
+  get aiProvider() {
+    return (process.env.AI_PROVIDER || "gemini").toLowerCase();
+  },
+  get geminiApiKey() {
+    return process.env.GEMINI_API_KEY || "";
+  },
+  get geminiModel() {
+    return process.env.GEMINI_MODEL || "gemini-2.0-flash";
+  },
+  get aiRateLimitPerMinute() {
+    const value = Number(process.env.AI_RATE_LIMIT_PER_MINUTE) || 10;
+    return Number.isFinite(value) ? value : 10;
+  },
+  get aiMaxInputChars() {
+    const value = Number(process.env.AI_MAX_INPUT_CHARS) || 4000;
+    return Number.isFinite(value) ? value : 4000;
   },
   get logLevel() {
     const level = String(process.env.LOG_LEVEL || "info").toLowerCase();

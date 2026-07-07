@@ -8,7 +8,7 @@ const {
 
 let cachedWords = [];
 let cacheLoadedAt = 0;
-const CACHE_TTL_MS = 30000;
+const CACHE_TTL_MS = 60000;
 
 async function refreshCache(force = false) {
   const now = Date.now();
@@ -92,6 +92,41 @@ async function createBadWord(actorId, actorRole, payload = {}, req = null) {
   return created;
 }
 
+async function updateBadWord(actorId, actorRole, id, payload = {}, req = null) {
+  const existing = await badWordRepository.findById(id);
+  if (!existing) {
+    throw new Error("Từ cấm không tồn tại.");
+  }
+
+  const severity = payload.severity !== undefined ? payload.severity : existing.severity;
+  if (!isValidSeverity(severity)) {
+    throw new Error("Mức độ từ cấm không hợp lệ.");
+  }
+
+  const replacement =
+    payload.replacement !== undefined
+      ? String(payload.replacement || "***").trim().slice(0, 40) || "***"
+      : existing.replacement;
+
+  const updated = await badWordRepository.update(id, { severity, replacement });
+  if (!updated) {
+    throw new Error("Từ cấm không tồn tại.");
+  }
+
+  await refreshCache(true);
+  await auditService.log({
+    actorId,
+    actorRole,
+    action: "bad_word.update",
+    targetType: "bad_word",
+    targetId: updated.id,
+    details: { word: updated.word, severity: updated.severity },
+    req
+  });
+
+  return updated;
+}
+
 async function deleteBadWord(actorId, actorRole, id, req = null) {
   const removed = await badWordRepository.remove(id);
   if (!removed) {
@@ -117,6 +152,7 @@ module.exports = {
   applyTextFilter,
   listBadWords,
   createBadWord,
+  updateBadWord,
   deleteBadWord,
   filterMessageText
 };

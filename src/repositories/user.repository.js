@@ -236,6 +236,40 @@ async function setRole(userId, role) {
   return toAdminUser(result.rows[0]);
 }
 
+async function searchUsers(queryText, { excludeUserId, limit = 20 } = {}) {
+  const q = String(queryText || "").trim().toLowerCase();
+  if (!q || q.length < 2) {
+    return [];
+  }
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
+  const params = [`%${q}%`, safeLimit];
+  let excludeSql = "";
+  if (excludeUserId) {
+    params.push(excludeUserId);
+    excludeSql = `AND id <> $3`;
+  }
+
+  const result = await query(
+    `SELECT id, username, display_name, avatar_url, role, status, is_locked
+     FROM users
+     WHERE status = 'active' AND is_locked = false
+       AND (LOWER(username) LIKE $1 OR LOWER(display_name) LIKE $1)
+       ${excludeSql}
+     ORDER BY username ASC
+     LIMIT $2`,
+    params
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    username: row.username,
+    displayName: row.display_name || row.username,
+    avatarUrl: row.avatar_url || null,
+    role: row.role || "user"
+  }));
+}
+
 module.exports = {
   createUser,
   findById,
@@ -250,5 +284,6 @@ module.exports = {
   toAdminUser,
   listForAdmin,
   updateAdminFields,
-  setRole
+  setRole,
+  searchUsers
 };

@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { Pool } = require("pg");
 const config = require("../config/env");
 
@@ -31,21 +32,39 @@ function listMigrationFiles() {
     .sort();
 }
 
+function checksumFor(sql) {
+  return crypto.createHash("sha256").update(sql, "utf8").digest("hex");
+}
+
 async function ensureMigrationsTable(client) {
   await client.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
-      id serial PRIMARY KEY,
-      filename varchar(255) UNIQUE NOT NULL,
-      applied_at timestamptz NOT NULL DEFAULT now()
+      filename varchar(255) PRIMARY KEY,
+      version text,
+      checksum text,
+      executed_at timestamptz NOT NULL DEFAULT now()
     )
+  `);
+
+  await client.query(`
+    ALTER TABLE schema_migrations
+    ADD COLUMN IF NOT EXISTS version text
+  `);
+  await client.query(`
+    ALTER TABLE schema_migrations
+    ADD COLUMN IF NOT EXISTS checksum text
+  `);
+  await client.query(`
+    ALTER TABLE schema_migrations
+    ADD COLUMN IF NOT EXISTS executed_at timestamptz NOT NULL DEFAULT now()
   `);
 }
 
 async function getAppliedMigrations(client) {
   const result = await client.query(
-    "SELECT filename FROM schema_migrations ORDER BY filename"
+    "SELECT filename, checksum FROM schema_migrations ORDER BY filename"
   );
-  return new Set(result.rows.map((row) => row.filename));
+  return new Map(result.rows.map((row) => [row.filename, row.checksum || null]));
 }
 
 async function runMigrations() {
@@ -66,22 +85,31 @@ async function runMigrations() {
       const applied = await getAppliedMigrations(client);
 
       for (const file of files) {
-        if (applied.has(file)) {
-          console.log(`Bỏ qua ${file} (đã chạy).`);
-          continue;
-        }
-
         const sql = fs.readFileSync(
           path.join(__dirname, "..", "..", "migrations", file),
           "utf8"
         );
+        const checksum = checksumFor(sql);
+        const version = file.replace(/\.sql$/, "");
+
+        if (applied.has(file)) {
+          const previousChecksum = applied.get(file);
+          if (previousChecksum && previousChecksum !== checksum) {
+            throw new Error(
+              `Checksum migration ${file} đã thay đổi. Không thể chạy lại migration đã apply.`
+            );
+          }
+          console.log(`Bỏ qua ${file} (đã chạy).`);
+          continue;
+        }
 
         await client.query("BEGIN");
         try {
           await client.query(sql);
           await client.query(
-            "INSERT INTO schema_migrations (filename) VALUES ($1)",
-            [file]
+            `INSERT INTO schema_migrations (version, filename, checksum)
+             VALUES ($1, $2, $3)`,
+            [version, file, checksum]
           );
           await client.query("COMMIT");
           console.log(`Migration ${file} hoàn tất.`);

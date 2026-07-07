@@ -8,15 +8,15 @@ const badWordService = require("./bad-word.service");
 const { sanitizeMessage } = require("../utils/sanitize");
 const { isAllowedReaction } = require("../utils/emoji");
 
-function isAdmin(userRow) {
-  return userRow?.role === "admin";
+function isStaff(userRow) {
+  return userRow?.role === "admin" || userRow?.role === "moderator";
 }
 
 function canEditMessage(messageRow, actorRow) {
   if (!messageRow || messageRow.deleted_at) return false;
   if (messageRow.type !== "text") return false;
 
-  if (isAdmin(actorRow)) return true;
+  if (isStaff(actorRow)) return true;
   if (messageRow.sender_id !== actorRow.id) return false;
 
   const createdAt = new Date(messageRow.created_at).getTime();
@@ -26,7 +26,7 @@ function canEditMessage(messageRow, actorRow) {
 
 function canDeleteMessage(messageRow, actorRow) {
   if (!messageRow || messageRow.deleted_at) return false;
-  if (isAdmin(actorRow)) return true;
+  if (isStaff(actorRow)) return true;
   return messageRow.sender_id === actorRow.id;
 }
 
@@ -88,7 +88,7 @@ async function editMessage(actorId, messageId, body, req = null) {
   });
 
   const updated = await messageRepository.editMessage(messageId, filtered.text);
-  const isAdminAction = isAdmin(actor) && message.sender_id !== actor.id;
+  const isAdminAction = isStaff(actor) && message.sender_id !== actor.id;
 
   if (isAdminAction) {
     await auditService.log({
@@ -112,7 +112,7 @@ async function deleteMessage(actorId, messageId, req = null) {
   }
 
   const deleted = await messageRepository.softDeleteMessage(messageId, actor.id);
-  const isAdminAction = isAdmin(actor) && message.sender_id !== actor.id;
+  const isAdminAction = isStaff(actor) && message.sender_id !== actor.id;
 
   if (isAdminAction) {
     await auditService.log({

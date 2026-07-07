@@ -87,11 +87,39 @@ async function remove(id) {
   return row ? mapRow(row) : null;
 }
 
+async function update(id, { severity, replacement }) {
+  const sets = [];
+  const params = [id];
+  let index = 2;
+
+  if (severity !== undefined) {
+    sets.push(`severity = $${index++}`);
+    params.push(severity);
+  }
+
+  if (replacement !== undefined) {
+    sets.push(`replacement = $${index++}`);
+    params.push(replacement);
+  }
+
+  if (!sets.length) {
+    return findById(id);
+  }
+
+  const result = await query(
+    `UPDATE bad_words SET ${sets.join(", ")} WHERE id = $1 RETURNING *`,
+    params
+  );
+  const row = result.rows[0];
+  return row ? mapRow(row) : null;
+}
+
 module.exports = {
   listAll,
   list,
   findById,
   findByWord,
   create,
-  remove
+  remove,
+  update
 };

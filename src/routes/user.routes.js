@@ -15,6 +15,7 @@ const profileRateLimit = rateLimit({
   message: { ok: false, error: "Quá nhiều yêu cầu. Vui lòng thử lại sau." }
 });
 
+router.get("/search", requireAuth, profileRateLimit, userController.searchUsers);
 router.get("/me", requireAuth, userController.getMe);
 router.patch("/me", requireAuth, requireCsrf, profileRateLimit, userController.updateMe);
 router.post(

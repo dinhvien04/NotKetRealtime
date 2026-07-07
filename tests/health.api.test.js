@@ -35,7 +35,13 @@ async function run() {
     assert.ok(ready.status === 200 || ready.status === 503);
     assert.equal(typeof readyData.ok, "boolean");
 
-    console.log("Đã kiểm tra: /health, /health/live, /health/ready.");
+    const dbHealth = await fetch(`${baseUrl}/health/db`);
+    const dbHealthData = await dbHealth.json();
+    assert.ok(dbHealth.status === 200 || dbHealth.status === 503);
+    assert.equal(typeof dbHealthData.ok, "boolean");
+    assert.ok(dbHealthData.database);
+
+    console.log("Đã kiểm tra: /health, /health/db, /health/live, /health/ready.");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await closePool();

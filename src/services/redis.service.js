@@ -10,7 +10,7 @@ function isEnabled() {
 }
 
 async function connect() {
-  if (!config.redisUrl) {
+  if (!config.enableRedisAdapter || !config.redisUrl) {
     logger.info("Redis chưa cấu hình — chạy single-instance in-memory.");
     return null;
   }

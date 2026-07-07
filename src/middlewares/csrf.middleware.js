@@ -1,8 +1,8 @@
-const crypto = require("crypto");
 const config = require("../config/env");
+const csrfService = require("../services/csrf.service");
 
 function generateCsrfToken() {
-  return crypto.randomBytes(32).toString("hex");
+  return csrfService.generateCsrfToken();
 }
 
 function setCsrfCookie(res, token) {
@@ -25,12 +25,7 @@ function requireCsrf(req, res, next) {
   const cookieToken = req.cookies?.[config.csrfCookieName];
   const headerToken = req.get("X-CSRF-Token");
 
-  if (
-    !cookieToken ||
-    !headerToken ||
-    cookieToken.length !== headerToken.length ||
-    !crypto.timingSafeEqual(Buffer.from(cookieToken), Buffer.from(headerToken))
-  ) {
+  if (!csrfService.validateCsrfRequest(cookieToken, headerToken)) {
     return res.status(403).json({
       ok: false,
       error: "CSRF token không hợp lệ."

@@ -2,7 +2,7 @@ const config = require("../config/env");
 
 function getAllowedSocketOrigins() {
   const origins = new Set([
-    config.clientOrigin,
+    ...config.clientOrigins,
     "http://localhost:3000",
     "http://127.0.0.1:3000"
   ]);

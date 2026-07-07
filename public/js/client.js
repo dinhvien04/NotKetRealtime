@@ -92,10 +92,24 @@ const elements = {
   tabOnline: document.getElementById("tabOnline"),
   tabPublic: document.getElementById("tabPublic"),
   tabGroups: document.getElementById("tabGroups"),
+  tabAi: document.getElementById("tabAi"),
   panelDirect: document.getElementById("panelDirect"),
   panelOnline: document.getElementById("panelOnline"),
   panelPublic: document.getElementById("panelPublic"),
   panelGroups: document.getElementById("panelGroups"),
+  panelAi: document.getElementById("panelAi"),
+  userSearchInput: document.getElementById("userSearchInput"),
+  userSearchResults: document.getElementById("userSearchResults"),
+  aiSessionList: document.getElementById("aiSessionList"),
+  newAiSessionButton: document.getElementById("newAiSessionButton"),
+  groupMembersButton: document.getElementById("groupMembersButton"),
+  leaveGroupButton: document.getElementById("leaveGroupButton"),
+  groupMembersModal: document.getElementById("groupMembersModal"),
+  groupMembersCloseButton: document.getElementById("groupMembersCloseButton"),
+  groupMembersList: document.getElementById("groupMembersList"),
+  addMemberForm: document.getElementById("addMemberForm"),
+  addMemberInput: document.getElementById("addMemberInput"),
+  addMemberError: document.getElementById("addMemberError"),
   publicRoomList: document.getElementById("publicRoomList"),
   groupList: document.getElementById("groupList"),
   createGroupButton: document.getElementById("createGroupButton"),
@@ -118,6 +132,10 @@ const state = {
   publicRoom: null,
   activeConversation: null,
   groups: [],
+  aiSessions: [],
+  aiSessionId: null,
+  userSearchTimer: null,
+  messageSearchTimer: null,
   sidebarTab: "direct",
   conversations: [],
   onlineUsers: [],
@@ -739,6 +757,17 @@ function renderConversationHeader(user = state.selectedUser, isOnline = true) {
     elements.selectedStatus.lastChild.textContent = "Nhóm chat";
     elements.conversationTypeChip.textContent = "Nhóm";
     elements.chatPanel.classList.remove("is-offline");
+    elements.groupMembersButton?.classList.remove("is-hidden");
+    elements.leaveGroupButton?.classList.remove("is-hidden");
+  } else if (state.chatMode === "ai") {
+    elements.selectedUsername.textContent = "AI Bot";
+    setAvatar(elements.selectedAvatar, "AI");
+    elements.selectedStatus.lastChild.textContent = "Trợ lý AI";
+    elements.conversationTypeChip.textContent = "AI";
+    elements.groupMembersButton?.classList.add("is-hidden");
+    elements.leaveGroupButton?.classList.add("is-hidden");
+    elements.attachButton.disabled = true;
+    elements.recordButton.disabled = true;
   } else if (user) {
     const displayName = user.displayName || user.username;
     elements.selectedUsername.textContent = displayName;
@@ -749,6 +778,8 @@ function renderConversationHeader(user = state.selectedUser, isOnline = true) {
       : "Đã ngoại tuyến";
     elements.conversationTypeChip.textContent = "Cuộc trò chuyện riêng";
     elements.chatPanel.classList.toggle("is-offline", !isOnline);
+    elements.groupMembersButton?.classList.add("is-hidden");
+    elements.leaveGroupButton?.classList.add("is-hidden");
   }
 
   elements.messageInput.disabled = state.isUploading || Boolean(state.recording);
@@ -777,11 +808,204 @@ function switchSidebarTab(tab) {
     ["direct", elements.tabDirect, elements.panelDirect],
     ["online", elements.tabOnline, elements.panelOnline],
     ["public", elements.tabPublic, elements.panelPublic],
-    ["groups", elements.tabGroups, elements.panelGroups]
+    ["groups", elements.tabGroups, elements.panelGroups],
+    ["ai", elements.tabAi, elements.panelAi]
   ];
   for (const [name, button, panel] of tabs) {
     button?.classList.toggle("is-active", name === tab);
+    button?.setAttribute("aria-selected", name === tab ? "true" : "false");
     panel?.classList.toggle("is-hidden", name !== tab);
+  }
+  if (tab === "ai") {
+    loadAiSessions();
+  }
+}
+
+async function searchUsersDebounced() {
+  const q = elements.userSearchInput?.value?.trim() || "";
+  if (!elements.userSearchResults) return;
+  if (q.length < 2) {
+    elements.userSearchResults.classList.add("is-hidden");
+    elements.userSearchResults.replaceChildren();
+    return;
+  }
+  try {
+    const result = await api(`/api/users/search?q=${encodeURIComponent(q)}`);
+    elements.userSearchResults.replaceChildren();
+    for (const user of result.users || []) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "user-item";
+      const avatar = document.createElement("span");
+      avatar.className = "avatar";
+      setAvatar(avatar, user.displayName || user.username, user.avatarUrl);
+      const copy = document.createElement("span");
+      copy.className = "user-copy";
+      const name = document.createElement("strong");
+      name.textContent = user.displayName || user.username;
+      copy.append(name);
+      button.append(avatar, copy);
+      button.addEventListener("click", () => {
+        elements.userSearchInput.value = "";
+        elements.userSearchResults.classList.add("is-hidden");
+        startChatWithOnlineUser(user);
+      });
+      elements.userSearchResults.append(button);
+    }
+    elements.userSearchResults.classList.toggle(
+      "is-hidden",
+      !(result.users || []).length
+    );
+  } catch (_error) {
+    elements.userSearchResults.classList.add("is-hidden");
+  }
+}
+
+function renderAiSessions() {
+  if (!elements.aiSessionList) return;
+  elements.aiSessionList.replaceChildren();
+  for (const session of state.aiSessions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "user-item";
+    if (state.chatMode === "ai" && state.aiSessionId === session.id) {
+      button.classList.add("is-active");
+    }
+    const avatar = document.createElement("span");
+    avatar.className = "avatar";
+    setAvatar(avatar, "AI");
+    const copy = document.createElement("span");
+    copy.className = "user-copy";
+    const name = document.createElement("strong");
+    name.textContent = session.title || "Cuộc trò chuyện AI";
+    copy.append(name);
+    button.append(avatar, copy);
+    button.addEventListener("click", () => selectAiSession(session.id));
+    elements.aiSessionList.append(button);
+  }
+}
+
+async function loadAiSessions() {
+  try {
+    const result = await api("/api/ai/sessions");
+    state.aiSessions = result.sessions || [];
+    renderAiSessions();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function selectAiSession(sessionId) {
+  state.chatMode = "ai";
+  state.aiSessionId = sessionId;
+  state.selectedUser = null;
+  state.selectedConversationId = null;
+  clearSelectedFile();
+  hideSearchResults();
+  openChatPanel();
+  elements.selectedUsername.textContent = "AI Bot";
+  setAvatar(elements.selectedAvatar, "AI");
+  elements.selectedStatus.lastChild.textContent = "Trợ lý AI";
+  elements.conversationTypeChip.textContent = "AI";
+  elements.groupMembersButton?.classList.add("is-hidden");
+  elements.leaveGroupButton?.classList.add("is-hidden");
+  elements.attachButton.disabled = true;
+  elements.recordButton.disabled = true;
+  clearMessages();
+  renderAiSessions();
+  try {
+    const result = await api(`/api/ai/sessions/${sessionId}/messages`);
+    for (const message of result.messages || []) {
+      appendAiMessage(message);
+    }
+    elements.messageInput.disabled = false;
+    elements.sendButton.disabled = false;
+    elements.messageInput.focus();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+function appendAiMessage(message) {
+  const row = document.createElement("article");
+  const bubble = document.createElement("div");
+  const meta = document.createElement("span");
+  const isAssistant = message.role === "assistant";
+  row.className = `message-row${isAssistant ? "" : " is-own"}`;
+  bubble.className = "message-bubble";
+  bubble.textContent = message.content || "";
+  meta.className = "message-meta";
+  meta.textContent = isAssistant ? "AI Bot" : "Bạn";
+  row.append(bubble, meta);
+  elements.messages.append(row);
+  elements.messages.scrollTop = elements.messages.scrollHeight;
+}
+
+async function createAiSession() {
+  try {
+    const result = await api("/api/ai/sessions", {
+      method: "POST",
+      body: JSON.stringify({ title: "Cuộc trò chuyện AI" })
+    });
+    state.aiSessions.unshift(result.session);
+    switchSidebarTab("ai");
+    await selectAiSession(result.session.id);
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+async function sendAiMessage(text) {
+  const result = await api(`/api/ai/sessions/${state.aiSessionId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content: text })
+  });
+  appendAiMessage(result.userMessage);
+  appendAiMessage(result.assistantMessage);
+  loadAiSessions();
+}
+
+async function openGroupMembersModal() {
+  if (!state.selectedConversationId || state.chatMode !== "group") return;
+  elements.addMemberError.textContent = "";
+  elements.groupMembersModal?.classList.remove("is-hidden");
+  try {
+    const result = await api(
+      `/api/conversations/${state.selectedConversationId}/participants`
+    );
+    elements.groupMembersList?.replaceChildren();
+    for (const member of result.participants || []) {
+      const item = document.createElement("div");
+      item.className = "user-item";
+      item.textContent = `${member.displayName || member.username} (${member.role || "member"})`;
+      elements.groupMembersList?.append(item);
+    }
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+function closeGroupMembersModal() {
+  elements.groupMembersModal?.classList.add("is-hidden");
+}
+
+async function leaveCurrentGroup() {
+  if (!state.selectedConversationId || state.chatMode !== "group") return;
+  if (!window.confirm("Rời nhóm này?")) return;
+  try {
+    await api(`/api/conversations/${state.selectedConversationId}/leave`, {
+      method: "POST"
+    });
+    showToast("Đã rời nhóm.", "success");
+    state.chatMode = "direct";
+    state.selectedConversationId = null;
+    state.activeConversation = null;
+    elements.chatPanel.classList.add("is-hidden");
+    elements.emptyState.classList.remove("is-hidden");
+    loadGroups();
+    switchSidebarTab("groups");
+  } catch (error) {
+    showToast(error.message, "error");
   }
 }
 
@@ -1394,6 +1618,27 @@ async function sendVoiceRecording() {
 }
 
 async function handleMessageSubmit() {
+  if (state.chatMode === "ai") {
+    if (!state.aiSessionId) {
+      showToast("Vui lòng chọn hoặc tạo phiên AI.", "error");
+      return;
+    }
+    const text = elements.messageInput.value.trim();
+    if (!text) return;
+    state.isUploading = true;
+    setComposerDisabled(true);
+    try {
+      await sendAiMessage(text);
+      elements.messageInput.value = "";
+    } catch (error) {
+      showToast(error.message, "error");
+    } finally {
+      state.isUploading = false;
+      setComposerDisabled(false);
+    }
+    return;
+  }
+
   if (state.chatMode === "direct" && !state.selectedUser) {
     showToast("Vui lòng chọn người để chat.", "error");
     return;
@@ -1643,10 +1888,51 @@ if (page === "chat") {
   });
 
   elements.messageSearchButton?.addEventListener("click", runMessageSearch);
+  elements.messageSearchInput?.addEventListener("input", () => {
+    window.clearTimeout(state.messageSearchTimer);
+    state.messageSearchTimer = window.setTimeout(runMessageSearch, 400);
+  });
   elements.messageSearchInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       runMessageSearch();
+    }
+  });
+  elements.userSearchInput?.addEventListener("input", () => {
+    window.clearTimeout(state.userSearchTimer);
+    state.userSearchTimer = window.setTimeout(searchUsersDebounced, 350);
+  });
+  elements.tabAi?.addEventListener("click", () => switchSidebarTab("ai"));
+  elements.newAiSessionButton?.addEventListener("click", createAiSession);
+  elements.groupMembersButton?.addEventListener("click", openGroupMembersModal);
+  elements.groupMembersCloseButton?.addEventListener("click", closeGroupMembersModal);
+  elements.groupMembersModal?.addEventListener("click", (event) => {
+    if (event.target === elements.groupMembersModal) closeGroupMembersModal();
+  });
+  elements.leaveGroupButton?.addEventListener("click", leaveCurrentGroup);
+  elements.addMemberForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    elements.addMemberError.textContent = "";
+    const username = elements.addMemberInput.value.trim();
+    if (!username || !state.selectedConversationId) return;
+    try {
+      const search = await api(`/api/users/search?q=${encodeURIComponent(username)}`);
+      const found = (search.users || []).find(
+        (user) => user.username.toLowerCase() === username.toLowerCase()
+      );
+      if (!found) {
+        elements.addMemberError.textContent = "Không tìm thấy người dùng.";
+        return;
+      }
+      await api(`/api/conversations/${state.selectedConversationId}/participants`, {
+        method: "POST",
+        body: JSON.stringify({ userId: found.id })
+      });
+      elements.addMemberInput.value = "";
+      await openGroupMembersModal();
+      showToast("Đã thêm thành viên.", "success");
+    } catch (error) {
+      elements.addMemberError.textContent = error.message;
     }
   });
   elements.cancelReplyButton?.addEventListener("click", clearReplyTarget);

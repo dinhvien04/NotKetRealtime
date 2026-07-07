@@ -55,8 +55,15 @@ async function health(req, res) {
   return res.status(result.statusCode).json(result.body);
 }
 
+async function db(req, res) {
+  const database = await pingDatabase();
+  const statusCode = database.ok ? 200 : 503;
+  return res.status(statusCode).json({ ok: database.ok, database });
+}
+
 module.exports = {
   live,
   ready,
-  health
+  health,
+  db
 };

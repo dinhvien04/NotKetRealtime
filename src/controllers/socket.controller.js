@@ -7,6 +7,7 @@ const userRepository = require("../repositories/user.repository");
 const messageService = require("../services/message.service");
 const conversationMessageService = require("../services/conversation-message.service");
 const realtimeService = require("../services/realtime.service");
+const rateLimitService = require("../services/rate-limit.service");
 const { sanitizeMessage } = require("../utils/sanitize");
 
 async function emitOnlineUsers(io) {
@@ -22,6 +23,15 @@ function reply(callback, payload) {
 
 function getSocketUser(socket) {
   return socket.data.user || null;
+}
+
+function guardSocketRateLimit(user, event, callback) {
+  const result = rateLimitService.checkRateLimit(user.id, event);
+  if (!result.allowed) {
+    reply(callback, { ok: false, error: result.error });
+    return false;
+  }
+  return true;
 }
 
 function registerSocketController(io) {
@@ -65,6 +75,10 @@ function registerSocketController(io) {
     });
 
     socket.on("load_messages", async (payload = {}, callback) => {
+      if (!guardSocketRateLimit(user, "load_messages", callback)) {
+        return;
+      }
+
       try {
         const conversationId = payload.conversationId;
         if (!conversationId) {
@@ -195,6 +209,11 @@ function registerSocketController(io) {
     });
 
     async function handleRoomMessage(expectedType, eventName, payload, callback) {
+      const rateEvent = expectedType === "public" ? "public_message" : "group_message";
+      if (!guardSocketRateLimit(user, rateEvent, callback)) {
+        return;
+      }
+
       try {
         const conversationId = payload.conversationId;
         if (!conversationId) {
@@ -234,6 +253,10 @@ function registerSocketController(io) {
     });
 
     socket.on("private_message", async (payload = {}, callback) => {
+      if (!guardSocketRateLimit(user, "private_message", callback)) {
+        return;
+      }
+
       const messageType = payload.type || "text";
 
       try {
@@ -419,6 +442,10 @@ function registerSocketController(io) {
     });
 
     socket.on("typing", async (payload = {}) => {
+      if (!guardSocketRateLimit(user, "typing", null)) {
+        return;
+      }
+
       const { conversationId, receiverId } = payload;
       if (!conversationId || !receiverId) return;
 
@@ -452,6 +479,10 @@ function registerSocketController(io) {
     });
 
     socket.on("edit_message", async (payload = {}, callback) => {
+      if (!guardSocketRateLimit(user, "edit_message", callback)) {
+        return;
+      }
+
       try {
         const messageId = payload.messageId;
         if (!messageId) {
@@ -481,6 +512,10 @@ function registerSocketController(io) {
     });
 
     socket.on("delete_message", async (payload = {}, callback) => {
+      if (!guardSocketRateLimit(user, "delete_message", callback)) {
+        return;
+      }
+
       try {
         const messageId = payload.messageId;
         if (!messageId) {
@@ -505,6 +540,10 @@ function registerSocketController(io) {
     });
 
     socket.on("add_reaction", async (payload = {}, callback) => {
+      if (!guardSocketRateLimit(user, "add_reaction", callback)) {
+        return;
+      }
+
       try {
         const { messageId, emoji } = payload;
         if (!messageId || !emoji) {
@@ -539,6 +578,10 @@ function registerSocketController(io) {
     });
 
     socket.on("remove_reaction", async (payload = {}, callback) => {
+      if (!guardSocketRateLimit(user, "remove_reaction", callback)) {
+        return;
+      }
+
       try {
         const { messageId, emoji } = payload;
         if (!messageId || !emoji) {
@@ -573,6 +616,10 @@ function registerSocketController(io) {
     });
 
     socket.on("mark_read", async (payload = {}, callback) => {
+      if (!guardSocketRateLimit(user, "mark_read", callback)) {
+        return;
+      }
+
       try {
         const { conversationId, messageId } = payload;
         if (!conversationId || !messageId) {

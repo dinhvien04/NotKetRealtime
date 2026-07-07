@@ -206,6 +206,29 @@ async function createBadWord(req, res) {
   }
 }
 
+async function updateBadWord(req, res) {
+  const dbError = getDatabaseError();
+  if (dbError) {
+    return res.status(503).json({ ok: false, error: dbError });
+  }
+
+  try {
+    const badWord = await badWordService.updateBadWord(
+      req.user.id,
+      req.user.role,
+      req.params.id,
+      req.body || {},
+      req
+    );
+    return res.json({ ok: true, badWord });
+  } catch (error) {
+    return res.status(400).json({
+      ok: false,
+      error: error.message || "Không thể cập nhật từ cấm."
+    });
+  }
+}
+
 async function deleteBadWord(req, res) {
   const dbError = getDatabaseError();
   if (dbError) {
@@ -260,6 +283,7 @@ module.exports = {
   editMessage,
   listBadWords,
   createBadWord,
+  updateBadWord,
   deleteBadWord,
   listAuditLogs
 };

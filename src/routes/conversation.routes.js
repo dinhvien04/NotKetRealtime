@@ -45,5 +45,12 @@ router.delete(
   groupRateLimit,
   conversationController.removeParticipant
 );
+router.post(
+  "/:id/leave",
+  requireAuth,
+  requireCsrf,
+  groupRateLimit,
+  conversationController.leaveGroup
+);
 
 module.exports = router;

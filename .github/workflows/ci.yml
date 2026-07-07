@@ -34,3 +34,7 @@ jobs:
         run: npm test
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Security audit
+        run: npm audit --audit-level=high
+        continue-on-error: true

@@ -11,7 +11,9 @@ const messageRoutes = require("./routes/message.routes");
 const conversationRoutes = require("./routes/conversation.routes");
 const adminRoutes = require("./routes/admin.routes");
 const healthRoutes = require("./routes/health.routes");
+const aiRoutes = require("./routes/ai.routes");
 const csrfRoutes = require("./routes/csrf.routes");
+const requestLoggingMiddleware = require("./middlewares/request-logging.middleware");
 
 const app = express();
 
@@ -30,6 +32,7 @@ app.use(
     }
   })
 );
+app.use(requestLoggingMiddleware);
 app.use(cookieParser());
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));
@@ -41,6 +44,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/conversations", conversationRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/ai", aiRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/", webRoutes);
 

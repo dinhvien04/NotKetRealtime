@@ -30,8 +30,8 @@
         </div>
         <div class="avatar avatar-current" id="currentAvatar" aria-hidden="true"></div>
         <a class="profile-button is-hidden" id="adminLink" href="/admin">Admin</a>
-        <button class="profile-button" id="profileButton" type="button">Hồ sơ</button>
-        <button class="logout-button" id="logoutButton" type="button">Đăng xuất</button>
+        <button class="profile-button" id="profileButton" type="button" aria-label="Mở hồ sơ">Hồ sơ</button>
+        <button class="logout-button" id="logoutButton" type="button" aria-label="Đăng xuất">Đăng xuất</button>
       </div>
     </header>
 
@@ -44,11 +44,16 @@
           </div>
           <span class="online-count" id="onlineCount">0</span>
         </div>
-        <div class="sidebar-tabs" role="tablist">
-          <button class="sidebar-tab is-active" id="tabDirect" type="button" data-tab="direct">Hội thoại</button>
-          <button class="sidebar-tab" id="tabOnline" type="button" data-tab="online">Online</button>
-          <button class="sidebar-tab" id="tabPublic" type="button" data-tab="public">Phòng chung</button>
-          <button class="sidebar-tab" id="tabGroups" type="button" data-tab="groups">Nhóm</button>
+        <div class="sidebar-search">
+          <input id="userSearchInput" type="search" placeholder="Tìm người dùng..." maxlength="80" aria-label="Tìm người dùng">
+          <div class="user-list is-hidden" id="userSearchResults"></div>
+        </div>
+        <div class="sidebar-tabs" role="tablist" aria-label="Danh mục chat">
+          <button class="sidebar-tab is-active" id="tabDirect" type="button" data-tab="direct" aria-selected="true">Hội thoại</button>
+          <button class="sidebar-tab" id="tabOnline" type="button" data-tab="online" aria-selected="false">Online</button>
+          <button class="sidebar-tab" id="tabPublic" type="button" data-tab="public" aria-selected="false">Phòng chung</button>
+          <button class="sidebar-tab" id="tabGroups" type="button" data-tab="groups" aria-selected="false">Nhóm</button>
+          <button class="sidebar-tab" id="tabAi" type="button" data-tab="ai" aria-selected="false">AI Bot</button>
         </div>
         <div class="sidebar-panel" id="panelDirect">
           <div class="sidebar-section">
@@ -75,6 +80,15 @@
               <button class="create-group-button" id="createGroupButton" type="button">+ Tạo nhóm</button>
             </div>
             <div class="user-list" id="groupList"></div>
+          </div>
+        </div>
+        <div class="sidebar-panel is-hidden" id="panelAi">
+          <div class="sidebar-section">
+            <div class="sidebar-section-head">
+              <p class="sidebar-section-title">AI Bot</p>
+              <button class="create-group-button" id="newAiSessionButton" type="button">+ Mới</button>
+            </div>
+            <div class="user-list" id="aiSessionList"></div>
           </div>
         </div>
         <div class="empty-users is-hidden" id="emptyUsers">
@@ -116,7 +130,11 @@
               <input id="messageSearchInput" type="search" placeholder="Tìm tin nhắn..." maxlength="120" aria-label="Tìm tin nhắn">
               <button id="messageSearchButton" type="button">Tìm</button>
             </div>
-            <span class="private-chip" id="conversationTypeChip">Cuộc trò chuyện riêng</span>
+            <div class="chat-header-tools">
+              <button class="profile-button is-hidden" id="groupMembersButton" type="button" aria-label="Xem thành viên nhóm">Thành viên</button>
+              <button class="profile-button is-hidden" id="leaveGroupButton" type="button" aria-label="Rời nhóm">Rời nhóm</button>
+              <span class="private-chip" id="conversationTypeChip">Cuộc trò chuyện riêng</span>
+            </div>
           </header>
 
           <div class="search-results is-hidden" id="searchResults"></div>
@@ -217,10 +235,26 @@
     </div>
   </div>
 
-  <div class="group-modal is-hidden" id="groupModal" role="dialog" aria-modal="true">
+  <div class="group-modal is-hidden" id="groupMembersModal" role="dialog" aria-modal="true" aria-labelledby="groupMembersTitle">
     <div class="group-modal-card">
       <div class="profile-modal-header">
-        <h2>Tạo nhóm mới</h2>
+        <h2 id="groupMembersTitle">Thành viên nhóm</h2>
+        <button class="profile-close-button" id="groupMembersCloseButton" type="button" aria-label="Đóng">×</button>
+      </div>
+      <div class="user-list" id="groupMembersList"></div>
+      <form id="addMemberForm" class="profile-form" novalidate>
+        <label for="addMemberInput">Thêm thành viên (username)</label>
+        <input id="addMemberInput" type="text" maxlength="80" placeholder="username">
+        <p class="form-error" id="addMemberError" role="alert"></p>
+        <button class="home-join-button" type="submit">Thêm</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="group-modal is-hidden" id="groupModal" role="dialog" aria-modal="true" aria-labelledby="groupModalTitle">
+    <div class="group-modal-card">
+      <div class="profile-modal-header">
+        <h2 id="groupModalTitle">Tạo nhóm mới</h2>
         <button class="profile-close-button" id="groupCloseButton" type="button" aria-label="Đóng">×</button>
       </div>
       <form id="groupForm" class="profile-form" novalidate>

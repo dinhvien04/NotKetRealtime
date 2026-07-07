@@ -58,6 +58,13 @@ router.post(
   adminRateLimit,
   adminController.createBadWord
 );
+router.patch(
+  "/bad-words/:id",
+  ...adminOnly,
+  requireCsrf,
+  adminRateLimit,
+  adminController.updateBadWord
+);
 router.delete(
   "/bad-words/:id",
   ...adminOnly,
