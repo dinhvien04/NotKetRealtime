@@ -5,21 +5,37 @@ function getCsrfSecret() {
   return config.csrfSecret || config.jwtSecret || "";
 }
 
-function generateCsrfToken() {
-  const raw = crypto.randomBytes(32).toString("hex");
+function buildHmacMessage({ sub, sid, raw }) {
+  if (sub && sid) {
+    return `csrf:${sub}:${sid}:${raw}`;
+  }
+  return `csrf:anon:${raw}`;
+}
+
+function signToken(raw, session = {}) {
   const secret = getCsrfSecret();
   if (!secret) {
     return raw;
   }
 
+  const message = buildHmacMessage({
+    sub: session.sub || null,
+    sid: session.sid || null,
+    raw
+  });
   const signature = crypto
     .createHmac("sha256", secret)
-    .update(raw)
+    .update(message)
     .digest("hex");
   return `${raw}.${signature}`;
 }
 
-function verifyCsrfToken(token) {
+function generateCsrfToken(session = {}) {
+  const raw = crypto.randomBytes(32).toString("hex");
+  return signToken(raw, session);
+}
+
+function verifyCsrfToken(token, session = {}) {
   if (!token || typeof token !== "string") {
     return false;
   }
@@ -36,11 +52,7 @@ function verifyCsrfToken(token) {
     return false;
   }
 
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(raw)
-    .digest("hex");
-
+  const expected = signToken(raw, session).slice(dotIndex + 1);
   if (expected.length !== signature.length) {
     return false;
   }
@@ -63,17 +75,21 @@ function tokensMatch(cookieToken, headerToken) {
   );
 }
 
-function validateCsrfRequest(cookieToken, headerToken) {
+function validateCsrfRequest(cookieToken, headerToken, session = null) {
   if (!tokensMatch(cookieToken, headerToken)) {
     return false;
   }
 
-  return verifyCsrfToken(cookieToken) && verifyCsrfToken(headerToken);
+  const binding = session?.sub && session?.sid ? session : {};
+  return (
+    verifyCsrfToken(cookieToken, binding) && verifyCsrfToken(headerToken, binding)
+  );
 }
 
 module.exports = {
   generateCsrfToken,
   verifyCsrfToken,
   tokensMatch,
-  validateCsrfRequest
+  validateCsrfRequest,
+  buildHmacMessage
 };

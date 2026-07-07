@@ -10,7 +10,7 @@ async function generateReply({ messages, model }) {
   }
 
   const selectedModel = model || config.geminiModel || DEFAULT_MODEL;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(selectedModel)}:generateContent`;
 
   const contents = messages.map((entry) => ({
     role: entry.role === "assistant" ? "model" : "user",
@@ -23,7 +23,10 @@ async function generateReply({ messages, model }) {
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey
+      },
       body: JSON.stringify({
         contents,
         generationConfig: {

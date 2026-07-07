@@ -49,7 +49,7 @@ async function runValidationTests() {
   }
   process.env.JWT_SECRET = savedSecret;
 
-  const token = authService.createToken({
+  const { token, sid } = authService.createToken({
     id: "11111111-1111-1111-1111-111111111111",
     username: "tester",
     displayName: "Tester"
@@ -57,6 +57,8 @@ async function runValidationTests() {
   const payload = authService.verifyToken(token);
   assert.equal(payload.sub, "11111111-1111-1111-1111-111111111111");
   assert.equal(payload.username, "tester");
+  assert.equal(payload.sid, sid);
+  assert.ok(sid.length >= 16);
 
   const hash = await argon2.hash("secret12345", { type: argon2.argon2id });
   const valid = await argon2.verify(hash, "secret12345");

@@ -27,7 +27,7 @@ const forgotPasswordRateLimit = rateLimit({
 
 router.post("/register", authRateLimit, requireCsrf, authController.register);
 router.post("/login", authRateLimit, requireCsrf, authController.login);
-router.post("/logout", requireCsrf, optionalAuth, authController.logout);
+router.post("/logout", optionalAuth, requireCsrf, authController.logout);
 router.post(
   "/forgot-password",
   forgotPasswordRateLimit,

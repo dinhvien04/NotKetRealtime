@@ -7,7 +7,7 @@
 | Nhóm | Tính năng |
 |---|---|
 | **Auth** | Đăng ký, đăng nhập, đăng xuất (JWT HttpOnly cookie, Argon2id) |
-| | CSRF double-submit cho mọi POST thay đổi dữ liệu |
+| | CSRF double-submit bind session (`sid` trong JWT) cho mọi POST thay đổi dữ liệu |
 | | Quên mật khẩu qua OTP email (SMTP) |
 | **Profile** | Cập nhật display name, avatar, đổi mật khẩu |
 | **Chat 1-1** | Realtime Socket.IO, typing, read receipt, unread count |
@@ -15,7 +15,7 @@
 | | Reactions, reply, tìm kiếm tin nhắn |
 | **Public / Group** | Phòng chat công khai, tạo/sửa nhóm, quản lý thành viên |
 | **Media** | Upload ảnh, tài liệu, voice message (magic-byte validation) |
-| | Bucket public (demo) hoặc private + signed URL (production) |
+| | Bucket **private-by-default** + signed URL; public chỉ cho demo |
 | **Admin** | Dashboard `/admin` — stats, users, messages, bad words, audit logs |
 | | Khóa/mở khóa user, moderation tin nhắn, role admin/moderator |
 | **Bảo mật** | Helmet CSP, rate limit, sanitize input, bad-word filter |
@@ -51,7 +51,7 @@ src/middlewares/       auth, csrf, role, upload, avatar, socket-auth, socket-ori
 src/routes/            REST API + health + web pages
 views/                 index.html, chat.html, admin.html
 public/                css/style.css, js/client.js, js/admin.js
-tests/                 22 test files (API, service, socket integration)
+tests/                 28 test files (API, service, socket integration, security)
 .github/workflows/     ci.yml
 ```
 
@@ -89,7 +89,10 @@ Sao chép `.env.example` thành `.env` và điền các giá trị bắt buộc.
 | `DB_POOL_MAX` | `10` | Max connections pool Postgres |
 | `DB_STATEMENT_TIMEOUT_MS` | `10000` | Timeout query (ms) |
 | `PRESENCE_TTL_SECONDS` | `300` | TTL presence Redis |
-| `SUPABASE_STORAGE_PUBLIC` | `true` | `false` → private bucket + signed URL |
+| `SUPABASE_STORAGE_PUBLIC` | `false` | `true` chỉ khi demo bucket public |
+| `GEMINI_API_KEY` | — | Bật AI chatbot thật (Gemini) |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | Model Gemini |
+| `AI_RATE_LIMIT_PER_MINUTE` | `10` | Rate limit AI |
 | `SIGNED_URL_TTL_SECONDS` | `3600` | TTL signed URL |
 | `MAX_UPLOAD_BYTES` | 6MB | Giới hạn file upload |
 | `MAX_VOICE_BYTES` | 10MB | Giới hạn voice |
@@ -121,10 +124,11 @@ Migrations: `001_init` → `007_ai_attachments` (users, conversations, messages,
 
 1. Supabase Dashboard → **Storage** → **New bucket**
 2. Name: `chat-uploads` (hoặc khớp `SUPABASE_STORAGE_BUCKET`)
-3. **Demo:** Public bucket ON, `SUPABASE_STORAGE_PUBLIC=true`
-4. **Production:** Public OFF, `SUPABASE_STORAGE_PUBLIC=false` — app trả signed URL
+3. **Production (mặc định):** Public bucket OFF — không cần set env, app private-by-default và trả signed URL
+4. **Demo:** Public bucket ON + `SUPABASE_STORAGE_PUBLIC=true`
 5. File size limit: **6MB** (ảnh/file), voice tối đa **10MB**
-6. Allowed MIME: jpeg, png, webp, gif, pdf, txt, doc/docx, xls/xlsx, ppt/pptx, webm, ogg, mp4, m4a
+6. Allowed MIME: jpeg, png, webp, gif, pdf, txt, doc/docx, xls/xlsx, ppt/pptx, webm, ogg, mp3, wav (Office Open XML được validate cấu trúc ZIP nội bộ)
+7. Không cho upload: zip, rar, 7z, svg, html, js, exe, php, v.v.
 
 ## Setup SMTP (quên mật khẩu OTP)
 
@@ -168,10 +172,10 @@ npm start
 
 ```bash
 npm run check    # syntax check toàn bộ source
-npm test         # 22 test files
+npm test         # 28 test files
 ```
 
-Test DB/API cần `DATABASE_URL` và `JWT_SECRET` trong `.env` (hoặc env CI). CI GitHub Actions dùng secret `DATABASE_URL`.
+Test DB/API cần `DATABASE_URL` và `JWT_SECRET` trong `.env` (hoặc env CI). CI GitHub Actions (`.github/workflows/ci.yml`) chạy trên `push`/`pull_request` tới `main`: `npm ci` → `npm run check` → `npm test`, cần GitHub secret `DATABASE_URL` cho test có DB. Test không có DB skip rõ ràng.
 
 ## Deploy
 
@@ -239,6 +243,18 @@ Client lấy token trước mọi POST; gửi header `X-CSRF-Token` khớp cooki
 | GET/POST | `/groups` | Danh sách / tạo nhóm |
 | PATCH | `/:id` | Sửa nhóm |
 | GET/POST/DELETE | `/:id/participants` | Thành viên |
+| POST | `/:id/transfer-owner` | Chuyển quyền chủ nhóm (owner) |
+| POST | `/:id/leave` | Rời nhóm |
+
+### AI — `/api/ai`
+
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/sessions` | Danh sách phiên AI |
+| POST | `/sessions` | Tạo phiên mới |
+| GET | `/sessions/:id/messages` | Lịch sử phiên |
+| POST | `/sessions/:id/messages` | Gửi tin nhắn AI |
+| DELETE | `/sessions/:id` | Xóa phiên |
 
 ### Upload — `POST /api/uploads`
 

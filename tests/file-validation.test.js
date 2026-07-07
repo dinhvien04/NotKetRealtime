@@ -56,6 +56,28 @@ async function run() {
     originalName: "notes.txt"
   });
 
+  const emptyZip = Buffer.from([
+    0x50, 0x4b, 0x05, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00
+  ]);
+
+  try {
+    await validateUploadedFile({
+      buffer: emptyZip,
+      declaredMimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      originalName: "fake.docx"
+    });
+    assert.fail("Generic ZIP declared docx phải bị reject");
+  } catch (error) {
+    assert.match(error.message, /Office|khớp|hỗ trợ/);
+  }
+
+  assert.equal(hasBlockedExtension("icon.svg"), true);
+  assert.equal(hasBlockedExtension("shell.php"), true);
+  assert.equal(hasBlockedExtension("photo.jpg.php"), true);
+
   console.log("Đã kiểm tra magic-byte validation và blocked extensions.");
 }
 

@@ -7,7 +7,11 @@ const http = require("http");
 const app = require("../src/app");
 const { getDatabaseError, closePool } = require("../src/db");
 const { extractCookie } = require("./helpers/http");
-const { fetchCsrf, csrfHeaders, mergeCookies } = require("./helpers/csrf");
+const {
+  fetchCsrf,
+  csrfHeaders,
+  sessionFromAuthResponse
+} = require("./helpers/csrf");
 
 async function registerAndLogin(baseUrl) {
   const username = `ai_user_${Date.now()}`;
@@ -35,19 +39,7 @@ async function registerAndLogin(baseUrl) {
   });
   const loginData = await login.json();
   assert.equal(loginData.ok, true);
-  return extractCookie(login, "notket_token");
-}
-
-async function fetchAuthedCsrf(baseUrl, tokenCookie) {
-  const response = await fetch(`${baseUrl}/api/csrf-token`, {
-    headers: { Cookie: tokenCookie }
-  });
-  const data = await response.json();
-  const csrfCookie = extractCookie(response, "notket_csrf");
-  return {
-    token: data.csrfToken,
-    cookie: mergeCookies(tokenCookie, csrfCookie)
-  };
+  return sessionFromAuthResponse(login, loginData);
 }
 
 async function run() {
@@ -62,12 +54,11 @@ async function run() {
   const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
-    const tokenCookie = await registerAndLogin(baseUrl);
-    const csrf = await fetchAuthedCsrf(baseUrl, tokenCookie);
+    const session = await registerAndLogin(baseUrl);
 
     const noCsrf = await fetch(`${baseUrl}/api/ai/sessions`, {
       method: "POST",
-      headers: { Cookie: tokenCookie, "Content-Type": "application/json" },
+      headers: { Cookie: session.apiCookie, "Content-Type": "application/json" },
       body: JSON.stringify({ title: "Test AI" })
     });
     assert.equal(noCsrf.status, 403);
@@ -75,7 +66,7 @@ async function run() {
     const create = await fetch(`${baseUrl}/api/ai/sessions`, {
       method: "POST",
       headers: {
-        ...csrfHeaders(csrf.token, csrf.cookie),
+        ...csrfHeaders(session.csrfToken, session.apiCookie),
         "Content-Type": "application/json"
       },
       body: JSON.stringify({ title: "Test AI" })
@@ -89,7 +80,7 @@ async function run() {
       {
         method: "POST",
         headers: {
-          ...csrfHeaders(csrf.token, csrf.cookie),
+          ...csrfHeaders(session.csrfToken, session.apiCookie),
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ content: "Xin chào AI" })
@@ -105,7 +96,7 @@ async function run() {
       {
         method: "POST",
         headers: {
-          ...csrfHeaders(csrf.token, csrf.cookie),
+          ...csrfHeaders(session.csrfToken, session.apiCookie),
           "Content-Type": "application/json"
         },
         body: JSON.stringify({ content: tooLong })

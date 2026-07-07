@@ -109,9 +109,38 @@ async function removeParticipant(
   return participants;
 }
 
+async function transferOwner(
+  conversationId,
+  actorId,
+  targetUserId,
+  previousOwnerRole = "admin",
+  req = null
+) {
+  const participants = await conversationRepository.transferGroupOwner(
+    conversationId,
+    actorId,
+    targetUserId,
+    previousOwnerRole
+  );
+
+  const actor = await userRepository.findById(actorId);
+  await auditService.log({
+    actorId,
+    actorRole: actor?.role || "user",
+    action: "group.transfer_owner",
+    targetType: "conversation",
+    targetId: conversationId,
+    details: { userId: targetUserId, previousOwnerRole },
+    req
+  });
+
+  return participants;
+}
+
 module.exports = {
   createGroup,
   updateGroup,
   addParticipant,
-  removeParticipant
+  removeParticipant,
+  transferOwner
 };

@@ -46,21 +46,99 @@ async function attachReactions(messages) {
   }));
 }
 
-async function enrichFileUrls(messages) {
-  const enriched = [];
-  for (const message of messages) {
-    if (!message.isDeleted && message.fileKey) {
-      try {
-        const fileUrl = await resolveFileUrl(message.fileKey);
-        enriched.push({ ...message, fileUrl });
-      } catch (_error) {
-        enriched.push(message);
-      }
-    } else {
-      enriched.push(message);
+const signedUrlCache = new Map();
+const SIGNED_URL_CONCURRENCY = 8;
+
+function getCachedSignedUrl(fileKey) {
+  const cached = signedUrlCache.get(fileKey);
+  if (!cached) {
+    return null;
+  }
+  if (cached.expiresAt <= Date.now()) {
+    signedUrlCache.delete(fileKey);
+    return null;
+  }
+  return cached.url;
+}
+
+function cacheSignedUrl(fileKey, url) {
+  const ttlMs = Math.max((config.signedUrlTtlSeconds - 60) * 1000, 30_000);
+  signedUrlCache.set(fileKey, {
+    url,
+    expiresAt: Date.now() + ttlMs
+  });
+}
+
+async function resolveFileUrlCached(fileKey) {
+  const cachedUrl = getCachedSignedUrl(fileKey);
+  if (cachedUrl) {
+    return cachedUrl;
+  }
+
+  const url = await resolveFileUrl(fileKey);
+  cacheSignedUrl(fileKey, url);
+  return url;
+}
+
+async function mapWithConcurrency(items, mapper, limit = SIGNED_URL_CONCURRENCY) {
+  if (!items.length) {
+    return [];
+  }
+
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
     }
   }
-  return enriched;
+
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    () => worker()
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+async function enrichFileUrls(messages) {
+  const uniqueKeys = [
+    ...new Set(
+      messages
+        .filter((message) => !message.isDeleted && message.fileKey)
+        .map((message) => message.fileKey)
+    )
+  ];
+
+  const resolvedByKey = new Map();
+  await mapWithConcurrency(uniqueKeys, async (fileKey) => {
+    try {
+      const fileUrl = await resolveFileUrlCached(fileKey);
+      resolvedByKey.set(fileKey, { fileUrl, fileUnavailable: false });
+    } catch (_error) {
+      resolvedByKey.set(fileKey, { fileUrl: null, fileUnavailable: true });
+    }
+  });
+
+  return messages.map((message) => {
+    if (message.isDeleted || !message.fileKey) {
+      return message;
+    }
+
+    const resolved = resolvedByKey.get(message.fileKey);
+    if (!resolved) {
+      return message;
+    }
+
+    return {
+      ...message,
+      fileUrl: resolved.fileUrl,
+      fileUnavailable: resolved.fileUnavailable
+    };
+  });
 }
 
 async function createMessage({
@@ -411,6 +489,7 @@ module.exports = {
   countUnread,
   mapMessageRow,
   attachReactions,
+  enrichFileUrls,
   listForAdmin,
   getAdminStats
 };

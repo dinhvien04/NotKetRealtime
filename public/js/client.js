@@ -195,6 +195,9 @@ async function api(path, options = {}) {
     ...options
   });
   const data = await response.json().catch(() => ({}));
+  if (data.csrfToken) {
+    state.csrfToken = data.csrfToken;
+  }
   if (!response.ok || data.ok === false) {
     throw new Error(data.error || "Yêu cầu thất bại.");
   }
@@ -2203,6 +2206,7 @@ if (page === "chat") {
     } catch (error) {
       // ignore
     }
+    state.csrfToken = null;
     socket.disconnect();
     window.location.href = "/";
   });

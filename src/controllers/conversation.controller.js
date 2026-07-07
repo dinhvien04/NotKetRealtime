@@ -156,6 +156,29 @@ async function getParticipants(req, res) {
   }
 }
 
+async function transferOwner(req, res) {
+  const dbError = getDatabaseError();
+  if (dbError) {
+    return res.status(503).json({ ok: false, error: dbError });
+  }
+
+  try {
+    const participants = await conversationService.transferOwner(
+      req.params.id,
+      req.user.id,
+      req.body?.userId,
+      req.body?.previousOwnerRole,
+      req
+    );
+    return res.json({ ok: true, participants });
+  } catch (error) {
+    return res.status(400).json({
+      ok: false,
+      error: error.message || "Không thể chuyển quyền chủ nhóm."
+    });
+  }
+}
+
 async function leaveGroup(req, res) {
   const dbError = getDatabaseError();
   if (dbError) {
@@ -185,6 +208,7 @@ module.exports = {
   updateGroup,
   addParticipant,
   removeParticipant,
+  transferOwner,
   getParticipants,
   leaveGroup
 };

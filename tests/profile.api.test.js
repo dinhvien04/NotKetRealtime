@@ -6,7 +6,11 @@ const http = require("http");
 const app = require("../src/app");
 const { getDatabaseError, closePool } = require("../src/db");
 const { extractCookie } = require("./helpers/http");
-const { fetchCsrf, csrfHeaders, mergeCookies } = require("./helpers/csrf");
+const {
+  fetchCsrf,
+  csrfHeaders,
+  sessionFromAuthResponse
+} = require("./helpers/csrf");
 
 async function registerAndLogin(baseUrl) {
   const csrf = await fetchCsrf(baseUrl);
@@ -28,22 +32,21 @@ async function registerAndLogin(baseUrl) {
   const registerData = await registerResponse.json();
   assert.equal(registerData.ok, true, registerData.error);
 
-  const authCookie = extractCookie(registerResponse);
+  const authSession = sessionFromAuthResponse(registerResponse, registerData);
 
   return {
     username,
     email,
     password,
-    authCookie,
+    ...authSession,
     user: registerData.user
   };
 }
 
-async function sessionHeaders(baseUrl, session) {
-  const csrf = await fetchCsrf(baseUrl);
+function sessionHeaders(session) {
   return {
-    headers: csrfHeaders(csrf.token, mergeCookies(csrf.cookie, session.authCookie)),
-    readCookie: mergeCookies(csrf.cookie, session.authCookie)
+    headers: csrfHeaders(session.csrfToken, session.apiCookie),
+    readCookie: session.apiCookie
   };
 }
 
@@ -61,7 +64,7 @@ async function run() {
   try {
     const session = await registerAndLogin(baseUrl);
 
-    const readSession = await sessionHeaders(baseUrl, session);
+    const readSession = sessionHeaders(session);
     const profile = await fetch(`${baseUrl}/api/users/me`, {
       headers: { Cookie: readSession.readCookie }
     });
@@ -69,7 +72,7 @@ async function run() {
     assert.equal(profileData.ok, true);
     assert.equal(profileData.user.username, session.username);
 
-    const writeSession = await sessionHeaders(baseUrl, session);
+    const writeSession = sessionHeaders(session);
     const patch = await fetch(`${baseUrl}/api/users/me`, {
       method: "PATCH",
       headers: writeSession.headers,
@@ -83,7 +86,7 @@ async function run() {
     assert.equal(patchData.user.displayName, "Profile Tester");
     assert.equal(patchData.user.bio, "Bio test");
 
-    const passwordSession = await sessionHeaders(baseUrl, session);
+    const passwordSession = sessionHeaders(session);
     const badPassword = await fetch(`${baseUrl}/api/users/me/change-password`, {
       method: "POST",
       headers: passwordSession.headers,
@@ -96,7 +99,7 @@ async function run() {
     const badPasswordData = await badPassword.json();
     assert.equal(badPasswordData.ok, false);
 
-    const changeSession = await sessionHeaders(baseUrl, session);
+    const changeSession = sessionHeaders(session);
     const changePassword = await fetch(`${baseUrl}/api/users/me/change-password`, {
       method: "POST",
       headers: changeSession.headers,

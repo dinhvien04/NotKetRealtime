@@ -14,7 +14,7 @@ const {
   tokenFromCookie,
   waitForSocketConnect
 } = require("./helpers/http");
-const { fetchCsrf, csrfHeaders, mergeCookies } = require("./helpers/csrf");
+const { fetchCsrf, csrfHeaders, sessionFromAuthResponse } = require("./helpers/csrf");
 
 function emitWithAck(socket, eventName, payload = {}) {
   return new Promise((resolve) => {
@@ -37,12 +37,9 @@ async function registerUser(baseUrl, username, email) {
   });
   const data = await response.json();
   assert.equal(data.ok, true, data.error);
-  const authCookie = extractCookie(response);
   return {
     user: data.user,
-    authCookie,
-    apiCookie: mergeCookies(csrf.cookie, authCookie),
-    csrfToken: csrf.token,
+    ...sessionFromAuthResponse(response, data),
     password
   };
 }

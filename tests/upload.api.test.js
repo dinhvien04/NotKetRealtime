@@ -44,7 +44,9 @@ async function run() {
     });
     const loginData = await login.json();
     assert.equal(loginData.ok, true);
-    const cookie = mergeCookies(loginCsrf.cookie, extractCookie(login));
+    const authCookie = extractCookie(login);
+    const sessionCsrf = loginData.csrfToken;
+    const cookie = mergeCookies(authCookie, `notket_csrf=${sessionCsrf}`);
 
     const noCsrf = await fetch(`${baseUrl}/api/uploads`, {
       method: "POST",
@@ -56,7 +58,6 @@ async function run() {
     const noAuth = await fetch(`${baseUrl}/api/uploads`, { method: "POST" });
     assert.equal(noAuth.status, 401);
 
-    const uploadCsrf = await fetchCsrf(baseUrl);
     const pngBuffer = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
       "base64"
@@ -71,8 +72,8 @@ async function run() {
     const uploadWithoutSocket = await fetch(`${baseUrl}/api/uploads`, {
       method: "POST",
       headers: {
-        Cookie: mergeCookies(uploadCsrf.cookie, cookie),
-        "X-CSRF-Token": uploadCsrf.token
+        Cookie: cookie,
+        "X-CSRF-Token": sessionCsrf
       },
       body: formData
     });

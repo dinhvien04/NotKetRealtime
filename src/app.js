@@ -14,6 +14,7 @@ const healthRoutes = require("./routes/health.routes");
 const aiRoutes = require("./routes/ai.routes");
 const csrfRoutes = require("./routes/csrf.routes");
 const requestLoggingMiddleware = require("./middlewares/request-logging.middleware");
+const { requireSameOriginFetch } = require("./middlewares/sec-fetch.middleware");
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use(
   })
 );
 app.use(requestLoggingMiddleware);
+app.use(requireSameOriginFetch);
 app.use(cookieParser());
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));

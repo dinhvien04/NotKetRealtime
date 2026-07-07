@@ -1,5 +1,6 @@
 const path = require("path");
 const FileType = require("file-type");
+const yauzl = require("yauzl");
 const { isAllowedMimeType } = require("./mime");
 
 const BLOCKED_EXTENSIONS = new Set([
@@ -14,7 +15,9 @@ const BLOCKED_EXTENSIONS = new Set([
   ".bat",
   ".cmd",
   ".php",
-  ".zip"
+  ".zip",
+  ".rar",
+  ".7z"
 ]);
 
 const OFFICE_MIME_TYPES = new Set([
@@ -25,6 +28,24 @@ const OFFICE_MIME_TYPES = new Set([
   "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 ]);
+
+const OFFICE_OPEN_XML_PATHS = {
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
+    "[Content_Types].xml",
+    "word/document.xml"
+  ],
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+    "[Content_Types].xml",
+    "xl/workbook.xml"
+  ],
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": [
+    "[Content_Types].xml",
+    "ppt/presentation.xml"
+  ]
+};
+
+const MAX_ZIP_ENTRIES = 200;
+const MAX_ZIP_FILENAME_LENGTH = 255;
 
 const MIME_EXTENSION_MAP = {
   "image/jpeg": "jpg",
@@ -68,6 +89,62 @@ function isSafePlainText(buffer) {
   return Buffer.from(text, "utf8").equals(buffer);
 }
 
+function listZipEntryNames(buffer) {
+  return new Promise((resolve, reject) => {
+    yauzl.fromBuffer(
+      buffer,
+      { lazyEntries: true, validateEntrySizes: true },
+      (error, zipfile) => {
+        if (error || !zipfile) {
+          reject(error || new Error("Không thể đọc file ZIP."));
+          return;
+        }
+
+        const entries = [];
+        let entryCount = 0;
+
+        zipfile.on("entry", (entry) => {
+          entryCount += 1;
+          if (entryCount > MAX_ZIP_ENTRIES) {
+            zipfile.close();
+            reject(new Error("File ZIP có quá nhiều mục."));
+            return;
+          }
+
+          if (entry.fileName.length > MAX_ZIP_FILENAME_LENGTH) {
+            zipfile.close();
+            reject(new Error("Tên file trong ZIP không hợp lệ."));
+            return;
+          }
+
+          entries.push(entry.fileName);
+          zipfile.readEntry();
+        });
+
+        zipfile.on("end", () => resolve(entries));
+        zipfile.on("error", (zipError) => reject(zipError));
+        zipfile.readEntry();
+      }
+    );
+  });
+}
+
+async function validateOfficeOpenXml(buffer, declaredMimeType) {
+  const requiredPaths = OFFICE_OPEN_XML_PATHS[declaredMimeType];
+  if (!requiredPaths) {
+    return;
+  }
+
+  const entries = await listZipEntryNames(buffer);
+  const normalized = new Set(entries.map((entry) => entry.toLowerCase()));
+
+  for (const requiredPath of requiredPaths) {
+    if (!normalized.has(requiredPath.toLowerCase())) {
+      throw new Error("Cấu trúc file Office không hợp lệ.");
+    }
+  }
+}
+
 function mimeTypesMatch(declaredMimeType, detectedMime) {
   if (detectedMime === declaredMimeType) {
     return true;
@@ -75,7 +152,7 @@ function mimeTypesMatch(declaredMimeType, detectedMime) {
 
   if (
     detectedMime === "application/zip" &&
-    OFFICE_MIME_TYPES.has(declaredMimeType)
+    OFFICE_OPEN_XML_PATHS[declaredMimeType]
   ) {
     return true;
   }
@@ -154,6 +231,10 @@ async function validateUploadedFile({ buffer, declaredMimeType, originalName }) 
     throw new Error("Nội dung file không khớp với loại MIME đã khai báo.");
   }
 
+  if (OFFICE_OPEN_XML_PATHS[declaredMimeType]) {
+    await validateOfficeOpenXml(buffer, declaredMimeType);
+  }
+
   if (!isAllowedMimeType(detected.mime) && !OFFICE_MIME_TYPES.has(declaredMimeType)) {
     throw new Error("Loại file không được hỗ trợ.");
   }
@@ -171,5 +252,7 @@ module.exports = {
   validateUploadedFile,
   extensionFromMimeType,
   isSafePlainText,
-  mimeTypesMatch
+  mimeTypesMatch,
+  validateOfficeOpenXml,
+  listZipEntryNames
 };

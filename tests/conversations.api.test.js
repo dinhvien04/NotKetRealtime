@@ -57,11 +57,12 @@ async function registerUser(baseUrl, username, email) {
   const data = await response.json();
   assert.equal(data.ok, true, data.error);
   const authCookie = extractCookie(response);
+  const csrfToken = data.csrfToken || csrf.token;
   return {
     user: data.user,
     authCookie,
-    apiCookie: mergeCookies(csrf.cookie, authCookie),
-    csrfToken: csrf.token
+    apiCookie: mergeCookies(authCookie, `notket_csrf=${csrfToken}`),
+    csrfToken
   };
 }
 

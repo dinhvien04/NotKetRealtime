@@ -17,7 +17,7 @@ const {
   tokenFromCookie,
   waitForSocketConnect
 } = require("./helpers/http");
-const { fetchCsrf, csrfHeaders, mergeCookies } = require("./helpers/csrf");
+const { fetchCsrf, csrfHeaders, sessionFromAuthResponse } = require("./helpers/csrf");
 
 function emitWithAck(socket, eventName, payload = {}) {
   return new Promise((resolve) => {
@@ -40,12 +40,9 @@ async function registerUser(baseUrl, username, email) {
   });
   const data = await response.json();
   assert.equal(data.ok, true, data.error);
-  const authCookie = extractCookie(response);
   return {
     user: data.user,
-    authCookie,
-    apiCookie: mergeCookies(csrf.cookie, authCookie),
-    csrfToken: csrf.token
+    ...sessionFromAuthResponse(response, data)
   };
 }
 
@@ -98,11 +95,9 @@ async function run() {
     assert.equal(statsData.ok, true);
     assert.ok(statsData.stats.totalUsers >= 2);
 
-    const csrf = await fetchCsrf(baseUrl);
-    const apiCookie = mergeCookies(csrf.cookie, adminUser.authCookie);
     const createWord = await fetch(`${baseUrl}/api/admin/bad-words`, {
       method: "POST",
-      headers: csrfHeaders(csrf.token, apiCookie),
+      headers: csrfHeaders(adminUser.csrfToken, adminUser.apiCookie),
       body: JSON.stringify({
         word: `badword${stamp}`,
         severity: "low"
@@ -131,24 +126,20 @@ async function run() {
     assert.equal(auditData.ok, true);
     assert.ok(auditData.items.some((item) => item.action === "bad_word.create"));
 
-    const lockCsrf = await fetchCsrf(baseUrl);
-    const lockCookie = mergeCookies(lockCsrf.cookie, adminUser.authCookie);
     const lockUser = await fetch(`${baseUrl}/api/admin/users/${normalUser.user.id}`, {
       method: "PATCH",
-      headers: csrfHeaders(lockCsrf.token, lockCookie),
+      headers: csrfHeaders(adminUser.csrfToken, adminUser.apiCookie),
       body: JSON.stringify({ isLocked: true, lockedReason: "Test lock" })
     });
     const lockData = await lockUser.json();
     assert.equal(lockData.ok, true);
     assert.equal(lockData.user.isLocked, true);
 
-    const deleteCsrf = await fetchCsrf(baseUrl);
-    const deleteCookie = mergeCookies(deleteCsrf.cookie, adminUser.authCookie);
     const deleteMessage = await fetch(
       `${baseUrl}/api/admin/messages/${sent.message.id}`,
       {
         method: "DELETE",
-        headers: csrfHeaders(deleteCsrf.token, deleteCookie)
+        headers: csrfHeaders(adminUser.csrfToken, adminUser.apiCookie)
       }
     );
     const deleteData = await deleteMessage.json();

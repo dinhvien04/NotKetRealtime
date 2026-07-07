@@ -1,7 +1,6 @@
+const crypto = require("crypto");
 const { query, withTransaction } = require("../db");
 
-const UNIQUE_VIOLATION = "23505";
-const MAX_CREATE_RETRIES = 3;
 const PUBLIC_SLUG = "public-main";
 
 function mapConversationRow(row) {
@@ -17,9 +16,22 @@ function mapConversationRow(row) {
   };
 }
 
+function normalizeDirectPair(userA, userB) {
+  return userA < userB
+    ? { userLow: userA, userHigh: userB }
+    : { userLow: userB, userHigh: userA };
+}
+
+function directConversationLockKeys(userLow, userHigh) {
+  const hash = crypto
+    .createHash("sha256")
+    .update(`${userLow}:${userHigh}`)
+    .digest();
+  return [hash.readInt32BE(0), hash.readInt32BE(4)];
+}
+
 async function findDirectConversation(userA, userB) {
-  const userLow = userA < userB ? userA : userB;
-  const userHigh = userA < userB ? userB : userA;
+  const { userLow, userHigh } = normalizeDirectPair(userA, userB);
   const result = await query(
     `SELECT dc.conversation_id
      FROM direct_conversations dc
@@ -29,11 +41,16 @@ async function findDirectConversation(userA, userB) {
   return result.rows[0]?.conversation_id || null;
 }
 
-async function createDirectConversation(userA, userB) {
-  const userLow = userA < userB ? userA : userB;
-  const userHigh = userA < userB ? userB : userA;
+async function findOrCreateDirectConversation(userA, userB) {
+  const { userLow, userHigh } = normalizeDirectPair(userA, userB);
+  const [lockKey1, lockKey2] = directConversationLockKeys(userLow, userHigh);
 
   return withTransaction(async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock($1, $2)", [
+      lockKey1,
+      lockKey2
+    ]);
+
     const existing = await client.query(
       `SELECT conversation_id FROM direct_conversations
        WHERE user_low = $1 AND user_high = $2`,
@@ -48,22 +65,11 @@ async function createDirectConversation(userA, userB) {
     );
     const conversationId = conversation.rows[0].id;
 
-    const inserted = await client.query(
+    await client.query(
       `INSERT INTO direct_conversations (conversation_id, user_low, user_high)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (user_low, user_high) DO NOTHING
-       RETURNING conversation_id`,
+       VALUES ($1, $2, $3)`,
       [conversationId, userLow, userHigh]
     );
-
-    if (!inserted.rows[0]) {
-      const winner = await client.query(
-        `SELECT conversation_id FROM direct_conversations
-         WHERE user_low = $1 AND user_high = $2`,
-        [userLow, userHigh]
-      );
-      return winner.rows[0].conversation_id;
-    }
 
     await client.query(
       `INSERT INTO conversation_participants (conversation_id, user_id, role)
@@ -72,31 +78,18 @@ async function createDirectConversation(userA, userB) {
       [conversationId, userA, userB]
     );
 
-    return inserted.rows[0].conversation_id;
+    return conversationId;
   });
 }
 
-async function findOrCreateDirectConversation(userA, userB) {
-  for (let attempt = 0; attempt < MAX_CREATE_RETRIES; attempt++) {
-    const existingId = await findDirectConversation(userA, userB);
-    if (existingId) {
-      return existingId;
-    }
-
-    try {
-      return await createDirectConversation(userA, userB);
-    } catch (error) {
-      if (error.code !== UNIQUE_VIOLATION) {
-        throw error;
-      }
-    }
-  }
-
-  const finalId = await findDirectConversation(userA, userB);
-  if (!finalId) {
-    throw new Error("Không thể tạo hội thoại direct.");
-  }
-  return finalId;
+async function findOrphanDirectConversations() {
+  const result = await query(
+    `SELECT c.id
+     FROM conversations c
+     LEFT JOIN direct_conversations dc ON dc.conversation_id = c.id
+     WHERE c.type = 'direct' AND dc.conversation_id IS NULL`
+  );
+  return result.rows.map((row) => row.id);
 }
 
 async function getById(conversationId) {
@@ -485,7 +478,17 @@ async function removeGroupParticipant(conversationId, actorId, targetUserId) {
     if (targetRole === "owner") {
       throw new Error("Chủ nhóm không thể rời nhóm. Hãy chuyển quyền trước.");
     }
-  } else if (!["owner", "admin"].includes(actorRole)) {
+  } else if (actorRole === "member") {
+    throw new Error("Bạn không có quyền xóa thành viên.");
+  } else if (actorRole === "admin") {
+    if (targetRole === "owner" || targetRole === "admin") {
+      throw new Error("Admin không thể xóa owner hoặc admin khác.");
+    }
+  } else if (actorRole === "owner") {
+    if (targetRole === "owner") {
+      throw new Error("Không thể xóa chủ nhóm.");
+    }
+  } else {
     throw new Error("Bạn không có quyền xóa thành viên.");
   }
 
@@ -496,6 +499,50 @@ async function removeGroupParticipant(conversationId, actorId, targetUserId) {
   );
 
   return listParticipants(conversationId);
+}
+
+async function transferGroupOwner(
+  conversationId,
+  actorId,
+  targetUserId,
+  previousOwnerRole = "admin"
+) {
+  const conversation = await getById(conversationId);
+  if (!conversation || conversation.type !== "group") {
+    throw new Error("Nhóm không tồn tại.");
+  }
+
+  const actorRole = await getParticipantRole(conversationId, actorId);
+  if (actorRole !== "owner") {
+    throw new Error("Chỉ chủ nhóm mới có thể chuyển quyền.");
+  }
+
+  const targetRole = await getParticipantRole(conversationId, targetUserId);
+  if (!targetRole) {
+    throw new Error("Thành viên không tồn tại trong nhóm.");
+  }
+
+  if (targetUserId === actorId) {
+    throw new Error("Không thể chuyển quyền cho chính mình.");
+  }
+
+  const demotedRole = previousOwnerRole === "member" ? "member" : "admin";
+
+  return withTransaction(async (client) => {
+    await client.query(
+      `UPDATE conversation_participants
+       SET role = $3
+       WHERE conversation_id = $1 AND user_id = $2`,
+      [conversationId, actorId, demotedRole]
+    );
+    await client.query(
+      `UPDATE conversation_participants
+       SET role = 'owner'
+       WHERE conversation_id = $1 AND user_id = $2`,
+      [conversationId, targetUserId]
+    );
+    return listParticipants(conversationId);
+  });
 }
 
 async function canAccessConversation(conversationId, userId) {
@@ -530,6 +577,7 @@ async function touchConversation(conversationId, client = null) {
 module.exports = {
   findDirectConversation,
   findOrCreateDirectConversation,
+  findOrphanDirectConversations,
   getById,
   conversationExists,
   isParticipant,
@@ -547,6 +595,7 @@ module.exports = {
   updateGroup,
   addGroupParticipant,
   removeGroupParticipant,
+  transferGroupOwner,
   canAccessConversation,
   countUnread,
   markRead,

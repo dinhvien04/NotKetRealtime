@@ -52,5 +52,12 @@ router.post(
   groupRateLimit,
   conversationController.leaveGroup
 );
+router.post(
+  "/:id/transfer-owner",
+  requireAuth,
+  requireCsrf,
+  groupRateLimit,
+  conversationController.transferOwner
+);
 
 module.exports = router;

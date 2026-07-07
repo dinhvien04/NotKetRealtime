@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const argon2 = require("argon2");
 const jwt = require("jsonwebtoken");
 const config = require("../config/env");
@@ -54,19 +55,27 @@ function validatePassword(password) {
   return password;
 }
 
+function createSessionId() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
 function createToken(user) {
   const configError = getAuthConfigError();
   if (configError) throw new Error(configError);
 
-  return jwt.sign(
+  const sid = createSessionId();
+  const token = jwt.sign(
     {
       sub: user.id,
       username: user.username,
-      displayName: user.displayName || user.username
+      displayName: user.displayName || user.username,
+      sid
     },
     config.jwtSecret,
     { expiresIn: config.jwtExpiresIn }
   );
+
+  return { token, sid };
 }
 
 function verifyToken(token) {
@@ -186,6 +195,7 @@ async function getUserFromToken(token) {
 
 module.exports = {
   getAuthConfigError,
+  createSessionId,
   createToken,
   verifyToken,
   assertTokenNotRevoked,

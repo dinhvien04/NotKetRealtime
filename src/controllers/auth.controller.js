@@ -7,6 +7,10 @@ const {
   clearAuthCookie,
   getTokenFromRequest
 } = require("../middlewares/auth.middleware");
+const {
+  rotateCsrfToken,
+  clearCsrfCookie
+} = require("../middlewares/csrf.middleware");
 
 async function register(req, res) {
   const dbError = getDatabaseError();
@@ -21,9 +25,10 @@ async function register(req, res) {
 
   try {
     const user = await authService.register(req.body || {}, req);
-    const token = authService.createToken(user);
+    const { token, sid } = authService.createToken(user);
     setAuthCookie(res, token);
-    return res.status(201).json({ ok: true, user });
+    const csrfToken = rotateCsrfToken(res, { sub: user.id, sid });
+    return res.status(201).json({ ok: true, user, csrfToken });
   } catch (error) {
     return res.status(400).json({
       ok: false,
@@ -45,9 +50,10 @@ async function login(req, res) {
 
   try {
     const user = await authService.login(req.body || {}, req);
-    const token = authService.createToken(user);
+    const { token, sid } = authService.createToken(user);
     setAuthCookie(res, token);
-    return res.json({ ok: true, user });
+    const csrfToken = rotateCsrfToken(res, { sub: user.id, sid });
+    return res.json({ ok: true, user, csrfToken });
   } catch (error) {
     return res.status(401).json({
       ok: false,
@@ -69,6 +75,7 @@ async function logout(req, res) {
   }
 
   clearAuthCookie(res);
+  clearCsrfCookie(res);
   return res.json({ ok: true });
 }
 

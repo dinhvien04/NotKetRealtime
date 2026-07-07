@@ -15,7 +15,14 @@ function getMaxUploadBytes() {
   return Number.isFinite(value) ? value : 6291456;
 }
 
+function parseSupabaseStoragePublic(raw) {
+  if (raw === undefined || raw === "") return false;
+  if (raw === "false" || raw === "0") return false;
+  return raw === "true" || raw === "1";
+}
+
 module.exports = {
+  parseSupabaseStoragePublic,
   get databaseUrl() {
     return process.env.DATABASE_URL || "";
   },
@@ -88,9 +95,7 @@ module.exports = {
     return Number.isFinite(value) ? value : 120;
   },
   get supabaseStoragePublic() {
-    const raw = process.env.SUPABASE_STORAGE_PUBLIC;
-    if (raw === undefined || raw === "") return true;
-    return raw === "true" || raw === "1";
+    return parseSupabaseStoragePublic(process.env.SUPABASE_STORAGE_PUBLIC);
   },
   get signedUrlTtlSeconds() {
     const value = Number(process.env.SIGNED_URL_TTL_SECONDS) || 3600;

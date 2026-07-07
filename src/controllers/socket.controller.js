@@ -479,13 +479,22 @@ function registerSocketController(io) {
       }
     });
 
-    socket.on("typing", async (payload = {}) => {
-      if (!guardSocketRateLimit(user, "typing", null)) {
+    async function handleTypingEvent(payload = {}, isTyping) {
+      if (isTyping && !guardSocketRateLimit(user, "typing", null)) {
         return;
       }
 
-      const { conversationId, receiverId } = payload;
-      if (!conversationId || !receiverId) return;
+      const { conversationId } = payload;
+      if (!conversationId) return;
+
+      try {
+        assertValidUuid(conversationId, "conversationId");
+      } catch (_error) {
+        return;
+      }
+
+      const conversation = await conversationRepository.getById(conversationId);
+      if (!conversation) return;
 
       const allowed = await conversationRepository.isParticipant(
         conversationId,
@@ -493,27 +502,46 @@ function registerSocketController(io) {
       );
       if (!allowed) return;
 
-      io.to(`user:${receiverId}`).emit("typing", {
+      const eventName = isTyping ? "typing" : "stop_typing";
+      const eventPayload = {
         conversationId,
         senderId: user.id,
-        senderName: user.displayName || user.username
-      });
+        ...(isTyping
+          ? { senderName: user.displayName || user.username }
+          : {})
+      };
+
+      if (conversation.type === "direct") {
+        const receiver = await conversationRepository.getOtherParticipant(
+          conversationId,
+          user.id
+        );
+        if (!receiver) return;
+
+        io.to(`user:${receiver.id}`).emit(eventName, eventPayload);
+        return;
+      }
+
+      if (conversation.type === "group") {
+        socket
+          .to(`conversation:${conversationId}`)
+          .emit(eventName, eventPayload);
+        return;
+      }
+
+      if (conversation.type === "public") {
+        socket
+          .to(`conversation:${conversationId}`)
+          .emit(eventName, eventPayload);
+      }
+    }
+
+    socket.on("typing", async (payload = {}) => {
+      await handleTypingEvent(payload, true);
     });
 
     socket.on("stop_typing", async (payload = {}) => {
-      const { conversationId, receiverId } = payload;
-      if (!conversationId || !receiverId) return;
-
-      const allowed = await conversationRepository.isParticipant(
-        conversationId,
-        user.id
-      );
-      if (!allowed) return;
-
-      io.to(`user:${receiverId}`).emit("stop_typing", {
-        conversationId,
-        senderId: user.id
-      });
+      await handleTypingEvent(payload, false);
     });
 
     socket.on("edit_message", async (payload = {}, callback) => {

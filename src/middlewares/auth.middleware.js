@@ -38,7 +38,11 @@ async function requireAuth(req, res, next) {
       return res.status(401).json({ ok: false, error: "Bạn cần đăng nhập." });
     }
 
+    const payload = authService.verifyToken(token);
     req.user = await authService.getUserFromToken(token);
+    if (payload.sid) {
+      req.session = { sub: payload.sub, sid: payload.sid };
+    }
     return next();
   } catch (error) {
     return res.status(401).json({
