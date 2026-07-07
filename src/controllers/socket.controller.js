@@ -9,6 +9,7 @@ const conversationMessageService = require("../services/conversation-message.ser
 const realtimeService = require("../services/realtime.service");
 const rateLimitService = require("../services/rate-limit.service");
 const { sanitizeMessage } = require("../utils/sanitize");
+const { assertValidUuid } = require("../utils/validation");
 
 async function emitOnlineUsers(io) {
   const users = await presenceService.getAllOnline();
@@ -85,6 +86,17 @@ function registerSocketController(io) {
           reply(callback, {
             ok: false,
             error: "Thiếu conversationId.",
+            messages: []
+          });
+          return;
+        }
+
+        try {
+          assertValidUuid(conversationId, "conversationId");
+        } catch (error) {
+          reply(callback, {
+            ok: false,
+            error: error.message,
             messages: []
           });
           return;
@@ -266,6 +278,22 @@ function registerSocketController(io) {
         if (payload.conversationId) {
           conversationId = payload.conversationId;
 
+          try {
+            assertValidUuid(conversationId, "conversationId");
+          } catch (error) {
+            reply(callback, { ok: false, error: error.message });
+            return;
+          }
+
+          const conversation = await conversationRepository.getById(conversationId);
+          if (!conversation || conversation.type !== "direct") {
+            reply(callback, {
+              ok: false,
+              error: "Hội thoại không hợp lệ cho chat riêng."
+            });
+            return;
+          }
+
           const allowed = await conversationRepository.isParticipant(
             conversationId,
             user.id
@@ -307,6 +335,13 @@ function registerSocketController(io) {
               ok: false,
               error: "Người nhận không hợp lệ."
             });
+            return;
+          }
+
+          try {
+            assertValidUuid(receiverId, "receiverId");
+          } catch (error) {
+            reply(callback, { ok: false, error: error.message });
             return;
           }
 
@@ -419,7 +454,10 @@ function registerSocketController(io) {
           senderId: user.id,
           senderName: user.displayName || user.username,
           receiverId,
-          payload: messagePayload
+          payload: {
+            ...messagePayload,
+            actorRole: user.role || "user"
+          }
         });
 
         await conversationRepository.touchConversation(conversationId);
@@ -624,6 +662,14 @@ function registerSocketController(io) {
         const { conversationId, messageId } = payload;
         if (!conversationId || !messageId) {
           reply(callback, { ok: false, error: "Thiếu dữ liệu mark_read." });
+          return;
+        }
+
+        try {
+          assertValidUuid(conversationId, "conversationId");
+          assertValidUuid(messageId, "messageId");
+        } catch (error) {
+          reply(callback, { ok: false, error: error.message });
           return;
         }
 

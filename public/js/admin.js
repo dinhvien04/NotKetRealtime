@@ -70,6 +70,29 @@ function formatDate(value) {
   return new Date(value).toLocaleString("vi-VN");
 }
 
+function createTableCell(text) {
+  const td = document.createElement("td");
+  td.textContent = String(text ?? "");
+  return td;
+}
+
+function createAdminTable(headers) {
+  const table = document.createElement("table");
+  table.className = "admin-table";
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  for (const header of headers) {
+    const th = document.createElement("th");
+    th.textContent = header;
+    headRow.append(th);
+  }
+  thead.append(headRow);
+  table.append(thead);
+  const tbody = document.createElement("tbody");
+  table.append(tbody);
+  return { table, tbody };
+}
+
 function switchPanel(name) {
   document.querySelectorAll(".admin-nav-btn").forEach((btn) => {
     btn.classList.toggle("is-active", btn.dataset.panel === name);
@@ -98,7 +121,11 @@ function renderStats(stats) {
     ...cards.map(([label, value]) => {
       const card = document.createElement("article");
       card.className = "admin-stat-card";
-      card.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
+      const labelEl = document.createElement("span");
+      labelEl.textContent = label;
+      const valueEl = document.createElement("strong");
+      valueEl.textContent = String(value ?? 0);
+      card.append(labelEl, valueEl);
       return card;
     })
   );
@@ -112,32 +139,26 @@ function renderUsersTable(users) {
     return;
   }
 
-  const table = document.createElement("table");
-  table.className = "admin-table";
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>Username</th>
-        <th>Role</th>
-        <th>Trạng thái</th>
-        <th>Khóa</th>
-        <th>Thao tác</th>
-      </tr>
-    </thead>
-  `;
-  const tbody = document.createElement("tbody");
+  const { table, tbody } = createAdminTable([
+    "Username",
+    "Role",
+    "Trạng thái",
+    "Khóa",
+    "Thao tác"
+  ]);
 
   for (const user of users) {
     const row = document.createElement("tr");
     const lockLabel = user.isLocked ? "Mở khóa" : "Khóa";
-    row.innerHTML = `
-      <td>${user.username}</td>
-      <td>${user.role}</td>
-      <td>${user.status}</td>
-      <td>${user.isLocked ? "Có" : "Không"}</td>
-      <td class="admin-actions"></td>
-    `;
-    const actions = row.querySelector(".admin-actions");
+    row.append(
+      createTableCell(user.username),
+      createTableCell(user.role),
+      createTableCell(user.status),
+      createTableCell(user.isLocked ? "Có" : "Không")
+    );
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "admin-actions";
+    const actions = actionsCell;
 
     const lockBtn = document.createElement("button");
     lockBtn.type = "button";
@@ -178,10 +199,10 @@ function renderUsersTable(users) {
       actions.append(roleBtn);
     }
 
+    row.append(actionsCell);
     tbody.append(row);
   }
 
-  table.append(tbody);
   wrap.replaceChildren(table);
 }
 
@@ -193,20 +214,13 @@ function renderMessagesTable(messages) {
     return;
   }
 
-  const table = document.createElement("table");
-  table.className = "admin-table";
-  table.innerHTML = `
-    <thead>
-      <tr>
-        <th>Người gửi</th>
-        <th>Loại</th>
-        <th>Nội dung</th>
-        <th>Thời gian</th>
-        <th></th>
-      </tr>
-    </thead>
-  `;
-  const tbody = document.createElement("tbody");
+  const { table, tbody } = createAdminTable([
+    "Người gửi",
+    "Loại",
+    "Nội dung",
+    "Thời gian",
+    ""
+  ]);
 
   for (const message of messages) {
     const preview =
@@ -214,13 +228,14 @@ function renderMessagesTable(messages) {
         ? (message.message || message.body || "").slice(0, 80)
         : message.fileName || message.type;
     const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${message.senderName || "-"}</td>
-      <td>${message.type}</td>
-      <td>${preview || "-"}</td>
-      <td>${formatDate(message.createdAt)}</td>
-      <td class="admin-actions"></td>
-    `;
+    row.append(
+      createTableCell(message.senderName || "-"),
+      createTableCell(message.type),
+      createTableCell(preview || "-"),
+      createTableCell(formatDate(message.createdAt))
+    );
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "admin-actions";
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "admin-action-btn";
@@ -235,11 +250,11 @@ function renderMessagesTable(messages) {
         showToast(error.message, "error");
       }
     });
-    row.querySelector(".admin-actions")?.append(deleteBtn);
+    actionsCell.append(deleteBtn);
+    row.append(actionsCell);
     tbody.append(row);
   }
 
-  table.append(tbody);
   wrap.replaceChildren(table);
 }
 
@@ -251,23 +266,17 @@ function renderBadWordsTable(items) {
     return;
   }
 
-  const table = document.createElement("table");
-  table.className = "admin-table";
-  table.innerHTML = `
-    <thead>
-      <tr><th>Từ</th><th>Mức</th><th>Thay thế</th><th></th></tr>
-    </thead>
-  `;
-  const tbody = document.createElement("tbody");
+  const { table, tbody } = createAdminTable(["Từ", "Mức", "Thay thế", ""]);
 
   for (const item of items) {
     const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${item.word}</td>
-      <td>${item.severity}</td>
-      <td>${item.replacement}</td>
-      <td class="admin-actions"></td>
-    `;
+    row.append(
+      createTableCell(item.word),
+      createTableCell(item.severity),
+      createTableCell(item.replacement)
+    );
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "admin-actions";
     if (state.currentUser?.role === "admin") {
       const deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
@@ -282,12 +291,12 @@ function renderBadWordsTable(items) {
           showToast(error.message, "error");
         }
       });
-      row.querySelector(".admin-actions")?.append(deleteBtn);
+      actionsCell.append(deleteBtn);
     }
+    row.append(actionsCell);
     tbody.append(row);
   }
 
-  table.append(tbody);
   wrap.replaceChildren(table);
 }
 
@@ -299,27 +308,27 @@ function renderAuditTable(items) {
     return;
   }
 
-  const table = document.createElement("table");
-  table.className = "admin-table";
-  table.innerHTML = `
-    <thead>
-      <tr><th>Thời gian</th><th>Action</th><th>Role</th><th>Target</th></tr>
-    </thead>
-  `;
-  const tbody = document.createElement("tbody");
+  const { table, tbody } = createAdminTable([
+    "Thời gian",
+    "Action",
+    "Role",
+    "Target"
+  ]);
 
   for (const item of items) {
     const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${formatDate(item.createdAt)}</td>
-      <td>${item.action}</td>
-      <td>${item.actorRole || "-"}</td>
-      <td>${item.targetType || "-"} ${item.targetId || ""}</td>
-    `;
+    const target = [item.targetType || "-", item.targetId || ""]
+      .filter(Boolean)
+      .join(" ");
+    row.append(
+      createTableCell(formatDate(item.createdAt)),
+      createTableCell(item.action),
+      createTableCell(item.actorRole || "-"),
+      createTableCell(target)
+    );
     tbody.append(row);
   }
 
-  table.append(tbody);
   wrap.replaceChildren(table);
 }
 

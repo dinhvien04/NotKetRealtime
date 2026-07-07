@@ -1,4 +1,5 @@
 const { query } = require("../db");
+const config = require("../config/env");
 const { getCurrentTime } = require("../utils/time");
 const reactionRepository = require("./reaction.repository");
 const { resolveFileUrl } = require("../services/storage.service");
@@ -79,6 +80,8 @@ async function createMessage({
   wasFiltered = false,
   filterHits = []
 }) {
+  const persistedFileUrl = config.supabaseStoragePublic ? fileUrl || null : null;
+
   const result = await query(
     `INSERT INTO messages (
        conversation_id, sender_id, type, body,
@@ -91,7 +94,7 @@ async function createMessage({
       senderId,
       type,
       body || "",
-      fileUrl || null,
+      persistedFileUrl,
       fileKey || null,
       fileName || null,
       mimeType || null,

@@ -146,6 +146,7 @@ const state = {
   typingTimer: null,
   typingSenderTimer: null,
   selectedFile: null,
+  previewObjectUrl: null,
   isUploading: false,
   nextCursor: null,
   isLoadingOlder: false,
@@ -642,7 +643,20 @@ function createImageBubble(message) {
   image.src = message.fileUrl;
   image.alt = message.fileName || "Ảnh đính kèm";
   image.loading = "lazy";
-  image.addEventListener("error", () => {
+  image.addEventListener("error", async () => {
+    if (message.fileKey) {
+      try {
+        const freshUrl = await refreshMediaUrl(message.fileKey);
+        message.fileUrl = freshUrl;
+        image.src = freshUrl;
+        link.href = freshUrl;
+        image.classList.remove("is-hidden");
+        fallback.classList.add("is-hidden");
+        return;
+      } catch (_error) {
+        // fall through to fallback UI
+      }
+    }
     image.classList.add("is-hidden");
     fallback.classList.remove("is-hidden");
   });
@@ -659,6 +673,16 @@ function createVoiceBubble(message) {
   audio.controls = true;
   audio.preload = "none";
   audio.src = message.fileUrl;
+  audio.addEventListener("error", async () => {
+    if (!message.fileKey) return;
+    try {
+      const freshUrl = await refreshMediaUrl(message.fileKey);
+      message.fileUrl = freshUrl;
+      audio.src = freshUrl;
+    } catch (_error) {
+      meta.textContent = "Không thể phát tin thoại.";
+    }
+  });
   meta.className = "message-voice-meta";
   meta.textContent = message.durationMs
     ? `Tin thoại • ${formatDuration(message.durationMs)}`
@@ -708,15 +732,44 @@ function appendSystemMessage(text) {
 
 function renderSelectedFilePreview(file) {
   if (!elements.selectedFilePreview || !file) return;
+  if (state.previewObjectUrl) {
+    URL.revokeObjectURL(state.previewObjectUrl);
+    state.previewObjectUrl = null;
+  }
   elements.selectedFileName.textContent = file.name;
   elements.selectedFileSize.textContent = formatFileSize(file.size);
+  if (file.type?.startsWith("image/")) {
+    state.previewObjectUrl = URL.createObjectURL(file);
+  }
   elements.selectedFilePreview.classList.remove("is-hidden");
 }
 
 function clearSelectedFile() {
+  if (state.previewObjectUrl) {
+    URL.revokeObjectURL(state.previewObjectUrl);
+    state.previewObjectUrl = null;
+  }
   state.selectedFile = null;
   if (elements.fileInput) elements.fileInput.value = "";
   elements.selectedFilePreview?.classList.add("is-hidden");
+}
+
+async function refreshMediaUrl(fileKey) {
+  const csrfToken = await ensureCsrfToken();
+  const response = await fetch("/api/uploads/refresh-url", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken
+    },
+    body: JSON.stringify({ fileKey })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok || !data.fileUrl) {
+    throw new Error(data.error || "Không thể làm mới URL file.");
+  }
+  return data.fileUrl;
 }
 
 function setComposerDisabled(disabled) {
@@ -1433,8 +1486,19 @@ function uploadFileWithProgress(file, extraFields = {}) {
   });
 }
 
-async function uploadSelectedFile(file, extraFields = {}) {
-  return uploadFileWithProgress(file, extraFields);
+async function uploadSelectedFile(file, extraFields = {}, maxAttempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await uploadFileWithProgress(file, extraFields);
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => window.setTimeout(resolve, 400 * attempt));
+      }
+    }
+  }
+  throw lastError;
 }
 
 function getMessageSocketEvent() {

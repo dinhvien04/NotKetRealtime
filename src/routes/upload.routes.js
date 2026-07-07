@@ -24,4 +24,12 @@ router.post(
   uploadController.uploadFile
 );
 
+router.post(
+  "/refresh-url",
+  requireAuth,
+  requireCsrf,
+  uploadRateLimit,
+  uploadController.refreshFileUrl
+);
+
 module.exports = router;

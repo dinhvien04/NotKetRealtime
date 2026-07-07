@@ -20,12 +20,21 @@ function getSupabaseClient() {
   }
 
   if (!client) {
-    client = createClient(config.supabaseUrl, config.supabaseServerKey, {
+    const options = {
       auth: {
         autoRefreshToken: false,
         persistSession: false
       }
-    });
+    };
+
+    try {
+      const WebSocket = require("ws");
+      options.realtime = { transport: WebSocket };
+    } catch (_error) {
+      // ws optional; storage upload still works when realtime transport unavailable
+    }
+
+    client = createClient(config.supabaseUrl, config.supabaseServerKey, options);
   }
 
   return client;

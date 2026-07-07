@@ -56,7 +56,42 @@ async function run() {
     const noAuth = await fetch(`${baseUrl}/api/uploads`, { method: "POST" });
     assert.equal(noAuth.status, 401);
 
-    console.log("Đã kiểm tra: upload unauthorized + CSRF reject.");
+    const uploadCsrf = await fetchCsrf(baseUrl);
+    const pngBuffer = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64"
+    );
+    const formData = new FormData();
+    formData.append(
+      "file",
+      new Blob([pngBuffer], { type: "image/png" }),
+      "tiny.png"
+    );
+
+    const uploadWithoutSocket = await fetch(`${baseUrl}/api/uploads`, {
+      method: "POST",
+      headers: {
+        Cookie: mergeCookies(uploadCsrf.cookie, cookie),
+        "X-CSRF-Token": uploadCsrf.token
+      },
+      body: formData
+    });
+    const uploadData = await uploadWithoutSocket.json();
+    assert.notEqual(uploadWithoutSocket.status, 401);
+    assert.notEqual(uploadWithoutSocket.status, 403);
+    const errorText = String(uploadData.error || "");
+    assert.ok(!/presence|offline|phải online|chưa kết nối/i.test(errorText));
+
+    if (uploadWithoutSocket.status === 200) {
+      assert.equal(uploadData.ok, true);
+      assert.ok(uploadData.file?.fileKey);
+    } else {
+      assert.ok([400, 503].includes(uploadWithoutSocket.status));
+    }
+
+    console.log(
+      "Đã kiểm tra: upload unauthorized + CSRF reject + upload không cần socket."
+    );
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await closePool();

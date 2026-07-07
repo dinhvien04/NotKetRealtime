@@ -1,5 +1,6 @@
 const config = require("../config/env");
 const messageRepository = require("../repositories/message.repository");
+const attachmentRepository = require("../repositories/attachment.repository");
 const messageService = require("../services/message.service");
 const badWordService = require("../services/bad-word.service");
 const {
@@ -47,7 +48,7 @@ function validateFileMessage(payload) {
   const size = Number(payload.size);
   const resolvedType = normalizeType(payload.type, mimeType);
 
-  if (!fileUrl || !fileKey || !fileName || !mimeType || !Number.isFinite(size)) {
+  if (!fileKey || !fileName || !mimeType || !Number.isFinite(size)) {
     throw new Error("Thiếu metadata file hợp lệ.");
   }
 
@@ -111,7 +112,7 @@ async function createMessage({
   }
 
   const fileMeta = validateFileMessage({ ...payload, type });
-  return messageRepository.createMessage({
+  const message = await messageRepository.createMessage({
     conversationId,
     senderId,
     senderName,
@@ -126,6 +127,12 @@ async function createMessage({
     durationMs: fileMeta.durationMs || null,
     replyToMessageId
   });
+
+  if (fileMeta.fileKey) {
+    await attachmentRepository.linkToMessage(fileMeta.fileKey, message.id);
+  }
+
+  return message;
 }
 
 async function getMessagesForConversation(options) {

@@ -42,7 +42,7 @@ server.js              HTTP + Socket.IO bootstrap, Redis adapter, graceful shutd
 src/app.js             Express app, helmet, routes, error handlers
 src/config/env.js      Biến môi trường
 src/db/                Pool Postgres, migrate runner
-migrations/            SQL migrations 001–006
+migrations/            SQL migrations 001–007
 src/repositories/      Truy vấn DB (users, conversations, messages, audit…)
 src/models/            presence.model.js (in-memory fallback)
 src/services/          auth, profile, mailer, storage, presence, redis, bad-word, admin, audit…
@@ -51,7 +51,7 @@ src/middlewares/       auth, csrf, role, upload, avatar, socket-auth, socket-ori
 src/routes/            REST API + health + web pages
 views/                 index.html, chat.html, admin.html
 public/                css/style.css, js/client.js, js/admin.js
-tests/                 15 test files (API, service, socket integration)
+tests/                 22 test files (API, service, socket integration)
 .github/workflows/     ci.yml
 ```
 
@@ -115,7 +115,7 @@ Kiểm tra trạng thái migration:
 npm run db:status
 ```
 
-Migrations: `001_init` → `006_admin_moderation` (users, conversations, messages, profile, media, public/group, admin/audit/bad-words).
+Migrations: `001_init` → `007_ai_attachments` (users, conversations, messages, profile, media, public/group, admin/audit/bad-words, AI, attachments).
 
 ## Setup Supabase Storage
 
@@ -142,9 +142,9 @@ PASSWORD_RESET_OTP_TTL_MINUTES=10
 
 Nếu không cấu hình SMTP, API forgot-password vẫn chạy nhưng email không gửi được (phù hợp dev local nếu đọc OTP từ log/test).
 
-## Setup Gemini (tùy chọn — chưa triển khai)
+## Setup Gemini (tùy chọn)
 
-AI chatbot (Phase 6) **chưa được implement** trong repo hiện tại. Khi triển khai sau này, cần thêm biến `GEMINI_API_KEY` và module provider riêng.
+AI chatbot dùng Google Gemini khi có `GEMINI_API_KEY`. Trong `NODE_ENV=test` hoặc khi thiếu key, server trả mock reply để test không phụ thuộc API ngoài.
 
 ## Chạy local
 
@@ -168,7 +168,7 @@ npm start
 
 ```bash
 npm run check    # syntax check toàn bộ source
-npm test         # 15 test files
+npm test         # 22 test files
 ```
 
 Test DB/API cần `DATABASE_URL` và `JWT_SECRET` trong `.env` (hoặc env CI). CI GitHub Actions dùng secret `DATABASE_URL`.
@@ -242,7 +242,7 @@ Client lấy token trước mọi POST; gửi header `X-CSRF-Token` khớp cooki
 
 ### Upload — `POST /api/uploads`
 
-Multipart upload (require auth + CSRF). Trả `uploadId` để gắn vào socket message.
+Multipart upload (require auth + CSRF). Trả `file.fileKey` và metadata để gắn vào socket message. `POST /api/uploads/refresh-url` làm mới signed URL khi bucket private.
 
 ### Admin — `/api/admin` (admin/moderator)
 
@@ -266,7 +266,7 @@ Multipart upload (require auth + CSRF). Trả `uploadId` để gắn vào socket
 
 | Event | Mô tả |
 |---|---|
-| `join_chat` | Xác nhận presence |
+| `join_chat` | Tham gia phòng public mặc định |
 | `load_conversations` | Danh sách hội thoại |
 | `load_messages` | Lịch sử theo `conversationId` |
 | `load_public_room` / `load_groups` | Public & groups |
@@ -278,7 +278,7 @@ Multipart upload (require auth + CSRF). Trả `uploadId` để gắn vào socket
 | `edit_message` / `delete_message` | Sửa/xóa realtime |
 | `add_reaction` / `remove_reaction` | Reaction |
 
-Server emit: `private_message`, `public_message`, `group_message`, `message_edited`, `message_deleted`, `reaction_updated`, `typing`, `online_users`, `read_receipt`, v.v.
+Server emit: `private_message`, `public_message`, `group_message`, `message_edited`, `message_deleted`, `message_reaction_added`, `message_reaction_removed`, `message_read`, `typing`, `online_users`, v.v.
 
 ## Security notes
 
@@ -295,7 +295,8 @@ Server emit: `private_message`, `public_message`, `group_message`, `message_edit
 | Hạn chế | Ghi chú |
 |---|---|
 | Presence in-memory | Khi chưa bật `REDIS_URL` — không scale horizontal |
-| AI chatbot | Chưa triển khai (Phase 6 skipped) |
+| Attachments DB row | Bảng `attachments` đã có; metadata upload lưu DB, pending registry vẫn in-memory TTL |
+| Signed URL refresh | Client tự refresh qua `/api/uploads/refresh-url`; chưa có auto-refresh toàn cục |
 | Malware scanning | Upload chỉ kiểm tra loại file cơ bản |
 | Public bucket | File URL có thể truy cập công khai nếu `SUPABASE_STORAGE_PUBLIC=true` |
 | Xóa message | File trên Supabase có thể còn sau khi xóa record DB |
