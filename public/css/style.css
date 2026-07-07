@@ -663,6 +663,46 @@ html {
   font-size: 13px;
 }
 
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 10px 12px;
+  color: var(--muted);
+  background: var(--surface-low);
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.auth-tab.is-active {
+  color: var(--primary-dark);
+  background: var(--primary-soft);
+}
+
+.auth-panel label + .home-input-shell {
+  margin-bottom: 10px;
+}
+
+.sidebar-section-title {
+  margin: 0 0 8px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sidebar-section + .sidebar-section {
+  margin-top: 14px;
+}
+
 .home-join-form label {
   display: block;
   margin: 0 0 7px 3px;
@@ -1794,6 +1834,232 @@ html {
   align-items: center;
 }
 
+.attach-button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  color: var(--primary-dark);
+  background: var(--surface-low);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.attach-button:hover:not(:disabled) {
+  background: var(--primary-soft);
+}
+
+.attach-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.attach-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.selected-file-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--surface-low);
+  border: 1px solid rgba(195, 199, 203, 0.55);
+  border-radius: 14px;
+}
+
+.selected-file-info {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.selected-file-icon {
+  display: grid;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--primary-dark);
+  background: var(--primary-soft);
+  border-radius: 10px;
+}
+
+.selected-file-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.selected-file-copy {
+  min-width: 0;
+}
+
+.selected-file-copy strong,
+.selected-file-copy span {
+  display: block;
+}
+
+.selected-file-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-file-copy span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.remove-file-button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--muted);
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.remove-file-button:hover {
+  color: var(--error);
+  background: var(--error-soft);
+}
+
+.remove-file-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.message-bubble-image,
+.message-bubble-file {
+  padding: 6px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.message-row.is-own .message-bubble-image,
+.message-row.is-own .message-bubble-file {
+  background: transparent;
+}
+
+.message-image-link {
+  display: block;
+  overflow: hidden;
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(35, 49, 68, 0.12);
+}
+
+.message-image {
+  display: block;
+  max-width: 260px;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.message-image-fallback {
+  display: block;
+  padding: 14px;
+  color: var(--muted);
+  background: var(--surface-low);
+  font-size: 12px;
+}
+
+.message-file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: min(280px, 100%);
+  padding: 12px 14px;
+  color: inherit;
+  text-decoration: none;
+  background: var(--white);
+  border: 1px solid rgba(195, 199, 203, 0.65);
+  border-radius: 14px;
+  box-shadow: 0 4px 14px rgba(35, 49, 68, 0.08);
+}
+
+.message-row.is-own .message-file-card {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.message-file-icon {
+  display: grid;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  color: var(--primary-dark);
+  background: var(--primary-soft);
+  border-radius: 10px;
+}
+
+.message-file-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.message-file-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.message-file-copy strong,
+.message-file-copy span {
+  display: block;
+}
+
+.message-file-copy strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-file-copy span {
+  margin-top: 2px;
+  font-size: 10px;
+}
+
+.message-file-action {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--primary-dark);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.message-row.is-own .message-file-action {
+  color: #e3f2fd;
+}
+
 .message-input-shell input {
   min-width: 0;
   flex: 1;
@@ -2246,6 +2512,10 @@ html {
 
   .message-row {
     max-width: 86%;
+  }
+
+  .message-image {
+    max-width: 70vw;
   }
 
   .message-form {

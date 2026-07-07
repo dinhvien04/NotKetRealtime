@@ -35,10 +35,10 @@
           <div class="hero-tags" aria-label="Công nghệ nổi bật">
             <span>#Realtime</span>
             <span>#Socket.IO</span>
-            <span>#NoAccount</span>
+            <span>#NeonDB</span>
           </div>
           <h1><span>Nối Kết Realtime</span> - Ứng dụng chat trực tuyến tức thì</h1>
-          <p>Trò chuyện không độ trễ trong không gian 1-1 riêng tư và hoàn toàn miễn phí. Không cần đăng ký, không cần mật khẩu.</p>
+          <p>Trò chuyện không độ trễ trong không gian 1-1 riêng tư. Đăng ký tài khoản một lần, lịch sử chat được lưu vĩnh viễn trên Neon Postgres.</p>
           <div class="hero-actions">
             <a class="home-button home-button-primary" href="#join">Vào phòng chat</a>
             <a class="home-button home-button-soft" href="#features">Xem tính năng</a>
@@ -59,26 +59,62 @@
             </span>
             <div>
               <span class="home-eyebrow">BẮT ĐẦU NGAY</span>
-              <h2>Tham gia trò chuyện</h2>
-              <p>Chỉ cần nhập tên của bạn và kết nối với mọi người đang online.</p>
+              <h2>Đăng nhập hoặc đăng ký</h2>
+              <p>Tạo tài khoản để chat realtime và lưu lịch sử tin nhắn.</p>
             </div>
           </div>
-          <form class="home-join-form" id="joinForm" novalidate>
-            <label for="usernameInput">Tên người dùng</label>
+          <div class="auth-tabs" role="tablist" aria-label="Xác thực">
+            <button class="auth-tab is-active" id="loginTab" type="button" role="tab" aria-selected="true">Đăng nhập</button>
+            <button class="auth-tab" id="registerTab" type="button" role="tab" aria-selected="false">Đăng ký</button>
+          </div>
+          <form class="home-join-form auth-panel" id="loginForm" novalidate>
+            <label for="loginIdentifier">Username hoặc email</label>
             <div class="home-input-shell">
               <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
-              <input id="usernameInput" name="username" type="text" maxlength="40" autocomplete="name" placeholder="Ví dụ: Nguyễn Văn A">
+              <input id="loginIdentifier" name="usernameOrEmail" type="text" autocomplete="username" placeholder="username hoặc email">
             </div>
-            <p class="form-error" id="joinError" role="alert"></p>
-            <button class="home-join-button" id="joinButton" type="submit">
-              <span>Vào phòng chat</span>
+            <label for="loginPassword">Mật khẩu</label>
+            <div class="home-input-shell">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+              <input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="Ít nhất 8 ký tự">
+            </div>
+            <p class="form-error" id="loginError" role="alert"></p>
+            <button class="home-join-button" id="loginButton" type="submit">
+              <span>Đăng nhập</span>
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
             </button>
-            <p class="join-security">
-              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8.2 7 10 4.2-1.8 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
-              An toàn và bảo mật. Không cần đăng ký tài khoản.
-            </p>
           </form>
+          <form class="home-join-form auth-panel is-hidden" id="registerForm" novalidate>
+            <label for="registerUsername">Username</label>
+            <div class="home-input-shell">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+              <input id="registerUsername" name="username" type="text" maxlength="40" autocomplete="username" placeholder="3-40 ký tự">
+            </div>
+            <label for="registerEmail">Email (tuỳ chọn)</label>
+            <div class="home-input-shell">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
+              <input id="registerEmail" name="email" type="email" autocomplete="email" placeholder="email@example.com">
+            </div>
+            <label for="registerPassword">Mật khẩu</label>
+            <div class="home-input-shell">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+              <input id="registerPassword" name="password" type="password" autocomplete="new-password" placeholder="Ít nhất 8 ký tự">
+            </div>
+            <label for="registerConfirmPassword">Xác nhận mật khẩu</label>
+            <div class="home-input-shell">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+              <input id="registerConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password" placeholder="Nhập lại mật khẩu">
+            </div>
+            <p class="form-error" id="registerError" role="alert"></p>
+            <button class="home-join-button" id="registerButton" type="submit">
+              <span>Tạo tài khoản</span>
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6m3-3h-6"/></svg>
+            </button>
+          </form>
+          <p class="join-security">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.8 8.2 7 10 4.2-1.8 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+            Mật khẩu được hash Argon2id. Phiên đăng nhập lưu trong HttpOnly cookie.
+          </p>
         </div>
       </div>
     </section>

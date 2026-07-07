@@ -6,8 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js && node --check src/app.js && node --check src/controllers/socket.controller.js && node --check public/js/client.js",
-    "test": "node tests/socket.integration.test.js"
+    "db:migrate": "node src/db/migrate.js",
+    "check": "node --check server.js && node --check src/app.js && node --check src/config/env.js && node --check src/controllers/socket.controller.js && node --check src/controllers/auth.controller.js && node --check src/controllers/upload.controller.js && node --check src/services/auth.service.js && node --check src/services/storage.service.js && node --check public/js/client.js",
+    "test": "node tests/auth.service.test.js && node tests/auth.api.test.js && node tests/socket.integration.test.js"
   },
   "keywords": [
     "chat",
@@ -17,8 +18,18 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@supabase/supabase-js": "^2.109.0",
+    "argon2": "^0.44.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.4.2",
     "express": "^5.1.0",
-    "socket.io": "^4.8.1"
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
+    "pg": "^8.22.0",
+    "socket.io": "^4.8.1",
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "socket.io-client": "^4.8.1"

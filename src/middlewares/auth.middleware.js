@@ -1,0 +1,70 @@
+const config = require("../config/env");
+const authService = require("../services/auth.service");
+
+function getTokenFromRequest(req) {
+  return req.cookies?.[config.cookieName] || null;
+}
+
+function setAuthCookie(res, token) {
+  res.cookie(config.cookieName, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: config.isProduction,
+    maxAge: config.jwtMaxAgeMs,
+    path: "/"
+  });
+}
+
+function clearAuthCookie(res) {
+  res.clearCookie(config.cookieName, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: config.isProduction,
+    path: "/"
+  });
+}
+
+async function requireAuth(req, res, next) {
+  try {
+    const configError = authService.getAuthConfigError();
+    if (configError) {
+      return res.status(503).json({ ok: false, error: configError });
+    }
+
+    const token = getTokenFromRequest(req);
+    if (!token) {
+      return res.status(401).json({ ok: false, error: "Bạn cần đăng nhập." });
+    }
+
+    req.user = await authService.getUserFromToken(token);
+    return next();
+  } catch (error) {
+    return res.status(401).json({
+      ok: false,
+      error: "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."
+    });
+  }
+}
+
+function requireAuthPage(req, res, next) {
+  const token = getTokenFromRequest(req);
+  if (!token) {
+    return res.redirect("/?auth=login");
+  }
+
+  try {
+    authService.verifyToken(token);
+    return next();
+  } catch (error) {
+    clearAuthCookie(res);
+    return res.redirect("/?auth=login");
+  }
+}
+
+module.exports = {
+  requireAuth,
+  requireAuthPage,
+  getTokenFromRequest,
+  setAuthCookie,
+  clearAuthCookie
+};

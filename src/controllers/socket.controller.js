@@ -1,9 +1,12 @@
-const userModel = require("../models/user.model");
+const presenceModel = require("../models/presence.model");
 const messageModel = require("../models/message.model");
-const { sanitizeMessage, sanitizeUsername } = require("../utils/sanitize");
+const uploadModel = require("../models/upload.model");
+const conversationRepository = require("../repositories/conversation.repository");
+const userRepository = require("../repositories/user.repository");
+const { sanitizeMessage } = require("../utils/sanitize");
 
 function emitOnlineUsers(io) {
-  io.emit("online_users", userModel.getAllUsers());
+  io.emit("online_users", presenceModel.getAllOnline());
 }
 
 function reply(callback, payload) {
@@ -12,127 +15,298 @@ function reply(callback, payload) {
   }
 }
 
+function getSocketUser(socket) {
+  return socket.data.user || null;
+}
+
 function registerSocketController(io) {
   io.on("connection", (socket) => {
-    socket.on("join_user", (payload, callback) => {
-      const rawUsername =
-        typeof payload === "string" ? payload : payload?.username;
-      const requestedUserId =
-        typeof payload === "object" ? sanitizeUsername(payload?.userId) : "";
-      const username = sanitizeUsername(rawUsername);
+    const user = getSocketUser(socket);
+    if (!user) {
+      socket.disconnect(true);
+      return;
+    }
 
-      if (!username) {
-        reply(callback, {
-          ok: false,
-          error: "Vui lòng nhập tên người dùng."
-        });
-        return;
-      }
+    presenceModel.addPresence(socket.id, user);
+    socket.join(`user:${user.id}`);
+    emitOnlineUsers(io);
 
-      if (userModel.getUser(socket.id)) {
-        reply(callback, {
-          ok: false,
-          error: "Bạn đã tham gia phòng chat."
-        });
-        return;
-      }
-
-      const user = userModel.addUser(
-        socket.id,
-        username,
-        requestedUserId || socket.id
-      );
+    socket.on("join_chat", (_payload, callback) => {
       reply(callback, { ok: true, user });
       emitOnlineUsers(io);
     });
 
-    socket.on("load_messages", (receiverId, callback) => {
-      const sender = userModel.getUser(socket.id);
-      const receiver = userModel.findUserById(receiverId);
-
-      if (!sender || !receiver) {
+    socket.on("load_conversations", async (_payload, callback) => {
+      try {
+        const conversations = await conversationRepository.listForUser(user.id);
+        reply(callback, { ok: true, conversations });
+      } catch (error) {
         reply(callback, {
           ok: false,
-          error: "Người dùng này hiện không trực tuyến.",
+          error: error.message || "Không thể tải danh sách hội thoại."
+        });
+      }
+    });
+
+    socket.on("load_messages", async (payload = {}, callback) => {
+      try {
+        const conversationId = payload.conversationId;
+        if (!conversationId) {
+          reply(callback, {
+            ok: false,
+            error: "Thiếu conversationId.",
+            messages: []
+          });
+          return;
+        }
+
+        const allowed = await conversationRepository.isParticipant(
+          conversationId,
+          user.id
+        );
+        if (!allowed) {
+          reply(callback, {
+            ok: false,
+            error: "Bạn không có quyền xem hội thoại này.",
+            messages: []
+          });
+          return;
+        }
+
+        const otherUser = await conversationRepository.getOtherParticipant(
+          conversationId,
+          user.id
+        );
+        const result = await messageModel.getMessagesForConversation({
+          conversationId,
+          limit: payload.limit,
+          cursor: payload.cursor
+        });
+
+        const messages = result.messages.map((message) => ({
+          ...message,
+          receiverId: otherUser?.id || null
+        }));
+
+        reply(callback, {
+          ok: true,
+          messages,
+          nextCursor: result.nextCursor,
+          conversationId,
+          otherUser
+        });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể tải tin nhắn.",
           messages: []
+        });
+      }
+    });
+
+    socket.on("private_message", async (payload = {}, callback) => {
+      const receiverId = payload.receiverId;
+      const messageType = payload.type || "text";
+
+      if (!receiverId || receiverId === user.id) {
+        reply(callback, {
+          ok: false,
+          error: "Người nhận không hợp lệ."
         });
         return;
       }
 
-      reply(callback, {
-        ok: true,
-        messages: messageModel.getMessagesBetweenUsers(sender.id, receiver.id)
+      try {
+        const receiver = await userRepository.findById(receiverId);
+        if (!receiver) {
+          reply(callback, {
+            ok: false,
+            error: "Người nhận không tồn tại."
+          });
+          return;
+        }
+
+        const conversationId =
+          payload.conversationId ||
+          (await conversationRepository.findOrCreateDirectConversation(
+            user.id,
+            receiverId
+          ));
+
+        const allowed = await conversationRepository.isParticipant(
+          conversationId,
+          user.id
+        );
+        if (!allowed) {
+          reply(callback, {
+            ok: false,
+            error: "Bạn không có quyền gửi tin nhắn trong hội thoại này."
+          });
+          return;
+        }
+
+        let messagePayload;
+
+        if (messageType === "text") {
+          const content = sanitizeMessage(payload.message || payload.text);
+          if (!content) {
+            reply(callback, {
+              ok: false,
+              error: "Không thể gửi tin nhắn trống."
+            });
+            return;
+          }
+          messagePayload = { type: "text", message: content };
+        } else if (messageType === "image" || messageType === "file") {
+          const pendingUpload = uploadModel.consumePendingUpload(
+            user.id,
+            payload.fileKey
+          );
+
+          if (!pendingUpload) {
+            reply(callback, {
+              ok: false,
+              error: "File chưa được upload hợp lệ hoặc đã hết hạn."
+            });
+            return;
+          }
+
+          if (
+            pendingUpload.fileUrl !== payload.fileUrl ||
+            pendingUpload.fileName !== payload.fileName ||
+            pendingUpload.mimeType !== payload.mimeType ||
+            Number(pendingUpload.size) !== Number(payload.size)
+          ) {
+            reply(callback, {
+              ok: false,
+              error: "Metadata file không khớp với upload đã xác thực."
+            });
+            return;
+          }
+
+          messagePayload = {
+            type: pendingUpload.kind,
+            fileUrl: pendingUpload.fileUrl,
+            fileKey: pendingUpload.fileKey,
+            fileName: pendingUpload.fileName,
+            mimeType: pendingUpload.mimeType,
+            size: pendingUpload.size
+          };
+        } else {
+          reply(callback, {
+            ok: false,
+            error: "Loại tin nhắn không được hỗ trợ."
+          });
+          return;
+        }
+
+        const message = await messageModel.createMessage({
+          conversationId,
+          senderId: user.id,
+          senderName: user.displayName || user.username,
+          receiverId,
+          payload: messagePayload
+        });
+
+        await conversationRepository.touchConversation(conversationId);
+
+        const outbound = {
+          ...message,
+          conversationId,
+          receiverId
+        };
+
+        io.to(`user:${receiverId}`).emit("private_message", outbound);
+        socket.emit("private_message", outbound);
+        reply(callback, { ok: true, message: outbound });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể gửi tin nhắn."
+        });
+      }
+    });
+
+    socket.on("typing", async (payload = {}) => {
+      const { conversationId, receiverId } = payload;
+      if (!conversationId || !receiverId) return;
+
+      const allowed = await conversationRepository.isParticipant(
+        conversationId,
+        user.id
+      );
+      if (!allowed) return;
+
+      io.to(`user:${receiverId}`).emit("typing", {
+        conversationId,
+        senderId: user.id,
+        senderName: user.displayName || user.username
       });
     });
 
-    socket.on("private_message", (payload = {}, callback) => {
-      const sender = userModel.getUser(socket.id);
-      const receiver = userModel.findUserById(payload.receiverId);
-      const content = sanitizeMessage(payload.message);
+    socket.on("stop_typing", async (payload = {}) => {
+      const { conversationId, receiverId } = payload;
+      if (!conversationId || !receiverId) return;
 
-      if (!sender) {
-        reply(callback, {
-          ok: false,
-          error: "Phiên trò chuyện không hợp lệ. Vui lòng tham gia lại."
-        });
-        return;
-      }
-
-      if (!content) {
-        reply(callback, {
-          ok: false,
-          error: "Không thể gửi tin nhắn trống."
-        });
-        return;
-      }
-
-      if (!receiver) {
-        reply(callback, {
-          ok: false,
-          error: "Người nhận đã ngoại tuyến."
-        });
-        return;
-      }
-
-      const message = messageModel.createMessage(
-        sender.id,
-        receiver.id,
-        sender.username,
-        content
+      const allowed = await conversationRepository.isParticipant(
+        conversationId,
+        user.id
       );
+      if (!allowed) return;
 
-      io.to(receiver.socketId).emit("private_message", message);
-      socket.emit("private_message", message);
-      reply(callback, { ok: true, message });
+      io.to(`user:${receiverId}`).emit("stop_typing", {
+        conversationId,
+        senderId: user.id
+      });
     });
 
-    socket.on("typing", (receiverId) => {
-      const sender = userModel.getUser(socket.id);
-      const receiver = userModel.findUserById(receiverId);
-      if (sender && receiver) {
-        io.to(receiver.socketId).emit("typing", {
-          senderId: sender.id,
-          senderName: sender.username
-        });
-      }
-    });
+    socket.on("mark_read", async (payload = {}, callback) => {
+      try {
+        const { conversationId, messageId } = payload;
+        if (!conversationId || !messageId) {
+          reply(callback, { ok: false, error: "Thiếu dữ liệu mark_read." });
+          return;
+        }
 
-    socket.on("stop_typing", (receiverId) => {
-      const receiver = userModel.findUserById(receiverId);
-      const sender = userModel.getUser(socket.id);
-      if (receiver && sender) {
-        io.to(receiver.socketId).emit("stop_typing", {
-          senderId: sender.id
+        const allowed = await conversationRepository.isParticipant(
+          conversationId,
+          user.id
+        );
+        if (!allowed) {
+          reply(callback, { ok: false, error: "Không có quyền cập nhật đã đọc." });
+          return;
+        }
+
+        await conversationRepository.markRead(
+          conversationId,
+          user.id,
+          messageId
+        );
+
+        const otherUser = await conversationRepository.getOtherParticipant(
+          conversationId,
+          user.id
+        );
+        if (otherUser) {
+          io.to(`user:${otherUser.id}`).emit("message_read", {
+            conversationId,
+            messageId,
+            readerId: user.id
+          });
+        }
+
+        reply(callback, { ok: true });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể cập nhật trạng thái đã đọc."
         });
       }
     });
 
     socket.on("disconnect", () => {
-      const removedUser = userModel.removeUser(socket.id);
-      if (!removedUser) {
-        return;
-      }
-
+      const removedUser = presenceModel.removePresence(socket.id);
+      if (!removedUser) return;
       io.emit("user_offline", removedUser);
       emitOnlineUsers(io);
     });
