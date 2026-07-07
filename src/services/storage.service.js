@@ -1,14 +1,43 @@
 const { randomUUID } = require("crypto");
 const config = require("../config/env");
 const { getSupabaseClient } = require("./supabase.service");
-const { getKindFromMimeType } = require("../utils/mime");
+const { getKindFromMimeType, getMaxBytesForKind } = require("../utils/mime");
 const {
   validateUploadedFile,
   extensionFromMimeType
 } = require("../utils/file-magic");
 const { sanitizeFileName, sanitizeSenderId } = require("../utils/filename");
 
-async function uploadChatFile({ buffer, originalName, mimeType, size, senderId }) {
+async function resolveFileUrl(fileKey) {
+  if (!fileKey) return null;
+
+  const supabase = getSupabaseClient();
+  const bucket = config.supabaseStorageBucket;
+
+  if (config.supabaseStoragePublic) {
+    const { data } = supabase.storage.from(bucket).getPublicUrl(fileKey);
+    return data.publicUrl;
+  }
+
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(fileKey, config.signedUrlTtlSeconds);
+
+  if (error) {
+    throw new Error(error.message || "Không thể tạo signed URL.");
+  }
+
+  return data.signedUrl;
+}
+
+async function uploadChatFile({
+  buffer,
+  originalName,
+  mimeType,
+  size,
+  senderId,
+  kind = null
+}) {
   if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
     throw new Error("File không hợp lệ.");
   }
@@ -17,17 +46,20 @@ async function uploadChatFile({ buffer, originalName, mimeType, size, senderId }
     throw new Error("Kích thước file không hợp lệ.");
   }
 
-  if (size > config.maxUploadBytes) {
-    throw new Error(
-      `File vượt quá giới hạn ${Math.round(config.maxUploadBytes / 1024 / 1024)}MB.`
-    );
-  }
-
   const validatedMimeType = await validateUploadedFile({
     buffer,
     declaredMimeType: mimeType,
     originalName
   });
+
+  const resolvedKind = getKindFromMimeType(validatedMimeType, kind);
+  const maxBytes = getMaxBytesForKind(resolvedKind);
+
+  if (size > maxBytes) {
+    throw new Error(
+      `File vượt quá giới hạn ${Math.round(maxBytes / 1024 / 1024)}MB.`
+    );
+  }
 
   const supabase = getSupabaseClient();
   const safeSenderId = sanitizeSenderId(senderId);
@@ -49,18 +81,23 @@ async function uploadChatFile({ buffer, originalName, mimeType, size, senderId }
     throw new Error(error.message || "Không thể upload file lên Supabase Storage.");
   }
 
-  const { data: publicData } = supabase.storage
-    .from(config.supabaseStorageBucket)
-    .getPublicUrl(fileKey);
-
-  return {
-    kind: getKindFromMimeType(validatedMimeType),
-    fileUrl: publicData.publicUrl,
+  const fileUrl = await resolveFileUrl(fileKey);
+  const result = {
+    kind: resolvedKind,
+    fileUrl,
     fileKey,
     fileName: displayFileName,
     mimeType: validatedMimeType,
     size
   };
+
+  if (!config.supabaseStoragePublic) {
+    result.expiresAt = new Date(
+      Date.now() + config.signedUrlTtlSeconds * 1000
+    ).toISOString();
+  }
+
+  return result;
 }
 
 const IMAGE_MIME_TYPES = new Set([
@@ -105,12 +142,10 @@ async function uploadAvatar({ buffer, mimeType, size, userId }) {
     throw new Error(error.message || "Không thể upload ảnh đại diện.");
   }
 
-  const { data: publicData } = supabase.storage
-    .from(config.supabaseStorageBucket)
-    .getPublicUrl(fileKey);
+  const avatarUrl = await resolveFileUrl(fileKey);
 
   return {
-    avatarUrl: publicData.publicUrl,
+    avatarUrl,
     fileKey,
     mimeType: validatedMimeType,
     size
@@ -119,5 +154,6 @@ async function uploadAvatar({ buffer, mimeType, size, userId }) {
 
 module.exports = {
   uploadChatFile,
-  uploadAvatar
+  uploadAvatar,
+  resolveFileUrl
 };

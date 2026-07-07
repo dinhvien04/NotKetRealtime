@@ -1,15 +1,19 @@
 const config = require("../config/env");
 const messageRepository = require("../repositories/message.repository");
 const messageService = require("../services/message.service");
-const { isAllowedMimeType, getKindFromMimeType } = require("../utils/mime");
+const {
+  isAllowedMimeType,
+  getKindFromMimeType,
+  getMaxBytesForKind
+} = require("../utils/mime");
 const { sanitizeFileName } = require("../utils/filename");
 
 function normalizeType(type, mimeType) {
-  if (type === "image" || type === "file" || type === "text") {
+  if (type === "image" || type === "file" || type === "text" || type === "voice") {
     return type;
   }
   if (mimeType) {
-    return getKindFromMimeType(mimeType);
+    return getKindFromMimeType(mimeType, type);
   }
   return "text";
 }
@@ -22,18 +26,32 @@ function validateTextMessage(payload) {
   return text;
 }
 
+function validateVoiceDuration(durationMs) {
+  const duration = Number(durationMs);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error("Thiếu thời lượng voice message.");
+  }
+  const maxDurationMs = config.maxVoiceSeconds * 1000;
+  if (duration > maxDurationMs) {
+    throw new Error(`Voice message vượt quá ${config.maxVoiceSeconds} giây.`);
+  }
+  return Math.round(duration);
+}
+
 function validateFileMessage(payload) {
   const fileUrl = typeof payload.fileUrl === "string" ? payload.fileUrl.trim() : "";
   const fileKey = typeof payload.fileKey === "string" ? payload.fileKey.trim() : "";
   const fileName = sanitizeFileName(payload.fileName);
   const mimeType = typeof payload.mimeType === "string" ? payload.mimeType.trim() : "";
   const size = Number(payload.size);
+  const resolvedType = normalizeType(payload.type, mimeType);
 
   if (!fileUrl || !fileKey || !fileName || !mimeType || !Number.isFinite(size)) {
     throw new Error("Thiếu metadata file hợp lệ.");
   }
 
-  if (size <= 0 || size > config.maxUploadBytes) {
+  const maxBytes = getMaxBytesForKind(resolvedType);
+  if (size <= 0 || size > maxBytes) {
     throw new Error("Kích thước file không hợp lệ.");
   }
 
@@ -41,14 +59,20 @@ function validateFileMessage(payload) {
     throw new Error("Loại file không được hỗ trợ.");
   }
 
-  return {
-    type: normalizeType(payload.type, mimeType),
+  const result = {
+    type: resolvedType,
     fileUrl,
     fileKey,
     fileName,
     mimeType,
     size
   };
+
+  if (resolvedType === "voice") {
+    result.durationMs = validateVoiceDuration(payload.durationMs);
+  }
+
+  return result;
 }
 
 async function createMessage({
@@ -90,6 +114,7 @@ async function createMessage({
     fileName: fileMeta.fileName,
     mimeType: fileMeta.mimeType,
     fileSize: fileMeta.size,
+    durationMs: fileMeta.durationMs || null,
     replyToMessageId
   });
 }
@@ -102,5 +127,6 @@ module.exports = {
   createMessage,
   getMessagesForConversation,
   validateTextMessage,
-  validateFileMessage
+  validateFileMessage,
+  validateVoiceDuration
 };

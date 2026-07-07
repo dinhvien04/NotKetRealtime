@@ -38,8 +38,19 @@ const MIME_EXTENSION_MAP = {
   "application/vnd.ms-excel": "xls",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
   "application/vnd.ms-powerpoint": "ppt",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx"
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  "audio/webm": "webm",
+  "audio/ogg": "ogg",
+  "audio/mpeg": "mp3",
+  "audio/wav": "wav"
 };
+
+const AUDIO_MIME_TYPES = new Set([
+  "audio/webm",
+  "audio/ogg",
+  "audio/mpeg",
+  "audio/wav"
+]);
 
 function hasBlockedExtension(fileName) {
   const extension = path.extname(String(fileName || "")).toLowerCase();
@@ -97,6 +108,34 @@ async function validateUploadedFile({ buffer, declaredMimeType, originalName }) 
     if (!isSafePlainText(buffer)) {
       throw new Error("Nội dung file text không hợp lệ.");
     }
+    return declaredMimeType;
+  }
+
+  if (AUDIO_MIME_TYPES.has(declaredMimeType)) {
+    let detected;
+    try {
+      detected = await FileType.fromBuffer(buffer);
+    } catch (_error) {
+      throw new Error("Không thể xác định loại file từ nội dung.");
+    }
+
+    if (!detected) {
+      throw new Error("Không thể xác định loại file từ nội dung.");
+    }
+
+    const detectedMime = detected.mime;
+    const audioMatch =
+      detectedMime === declaredMimeType ||
+      (declaredMimeType === "audio/webm" &&
+        (detectedMime === "audio/webm" || detectedMime === "video/webm")) ||
+      (declaredMimeType === "audio/ogg" && detectedMime === "audio/ogg") ||
+      (declaredMimeType === "audio/mpeg" && detectedMime === "audio/mpeg") ||
+      (declaredMimeType === "audio/wav" && detectedMime === "audio/wav");
+
+    if (!audioMatch) {
+      throw new Error("Nội dung file không khớp với loại MIME đã khai báo.");
+    }
+
     return declaredMimeType;
   }
 

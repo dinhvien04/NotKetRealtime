@@ -16,6 +16,7 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "🔥", "👏"];
 const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+const MAX_VOICE_SECONDS = 120;
 const DELETED_LABEL = "Tin nhắn đã bị xóa";
 const socket = page === "chat" ? io({ withCredentials: true }) : null;
 
@@ -44,6 +45,13 @@ const elements = {
   messageInput: document.getElementById("messageInput"),
   sendButton: document.getElementById("sendButton"),
   attachButton: document.getElementById("attachButton"),
+  recordButton: document.getElementById("recordButton"),
+  recordingStatus: document.getElementById("recordingStatus"),
+  recordingTimer: document.getElementById("recordingTimer"),
+  cancelRecordingButton: document.getElementById("cancelRecordingButton"),
+  sendRecordingButton: document.getElementById("sendRecordingButton"),
+  uploadProgress: document.getElementById("uploadProgress"),
+  uploadProgressBar: document.getElementById("uploadProgressBar"),
   fileInput: document.getElementById("fileInput"),
   selectedFilePreview: document.getElementById("selectedFilePreview"),
   selectedFileName: document.getElementById("selectedFileName"),
@@ -103,6 +111,7 @@ const state = {
   loadedMessageIds: new Set(),
   messageRows: new Map(),
   replyTo: null,
+  recording: null,
   forgotResetTokenId: null,
   forgotStep: "request"
 };
@@ -219,9 +228,17 @@ function getMessageBody(message) {
   return message.message || message.body || message.text || "";
 }
 
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.round(Number(ms) / 1000));
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, "0");
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
 function getMessagePreview(message) {
   if (message.isDeleted) return DELETED_LABEL;
   if (message.type === "image") return "Ảnh";
+  if (message.type === "voice") return "Tin thoại";
   if (message.type === "file") return message.fileName || "File";
   const body = getMessageBody(message);
   return body.length > 80 ? `${body.slice(0, 80)}…` : body;
@@ -334,7 +351,7 @@ function createMessageActions(message) {
 function fillMessageBubble(bubble, message) {
   bubble.replaceChildren();
   const messageType = message.type || "text";
-  bubble.className = `message-bubble${messageType === "image" ? " message-bubble-image" : ""}${messageType === "file" ? " message-bubble-file" : ""}`;
+  bubble.className = `message-bubble${messageType === "image" ? " message-bubble-image" : ""}${messageType === "file" ? " message-bubble-file" : ""}${messageType === "voice" ? " message-bubble-voice" : ""}`;
 
   if (message.isDeleted) {
     bubble.classList.add("is-deleted");
@@ -351,6 +368,7 @@ function fillMessageBubble(bubble, message) {
 
   if (messageType === "image") bubble.append(createImageBubble(message));
   else if (messageType === "file") bubble.append(createFileBubble(message));
+  else if (messageType === "voice") bubble.append(createVoiceBubble(message));
   else bubble.append(document.createTextNode(getMessageBody(message)));
 
   if (message.isEdited) {
@@ -571,6 +589,21 @@ function createImageBubble(message) {
   return link;
 }
 
+function createVoiceBubble(message) {
+  const wrapper = document.createElement("div");
+  const audio = document.createElement("audio");
+  const meta = document.createElement("span");
+  audio.controls = true;
+  audio.preload = "none";
+  audio.src = message.fileUrl;
+  meta.className = "message-voice-meta";
+  meta.textContent = message.durationMs
+    ? `Tin thoại • ${formatDuration(message.durationMs)}`
+    : "Tin thoại";
+  wrapper.append(audio, meta);
+  return wrapper;
+}
+
 function createFileBubble(message) {
   const card = document.createElement("a");
   const icon = document.createElement("span");
@@ -625,8 +658,24 @@ function clearSelectedFile() {
 
 function setComposerDisabled(disabled) {
   const isOffline = elements.messageInput?.disabled && !state.isUploading;
-  elements.sendButton.disabled = disabled || isOffline;
-  if (elements.attachButton) elements.attachButton.disabled = disabled || isOffline;
+  const blocked = disabled || isOffline || Boolean(state.recording);
+  elements.sendButton.disabled = blocked;
+  if (elements.attachButton) elements.attachButton.disabled = blocked;
+  if (elements.recordButton) {
+    elements.recordButton.disabled =
+      isOffline || disabled || state.isUploading || Boolean(state.selectedFile);
+  }
+}
+
+function setUploadProgress(percent) {
+  if (!elements.uploadProgress || !elements.uploadProgressBar) return;
+  if (percent === null) {
+    elements.uploadProgress.classList.add("is-hidden");
+    elements.uploadProgressBar.style.width = "0%";
+    return;
+  }
+  elements.uploadProgress.classList.remove("is-hidden");
+  elements.uploadProgressBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
 }
 
 function renderConversationHeader(user, isOnline) {
@@ -638,9 +687,11 @@ function renderConversationHeader(user, isOnline) {
     ? "Đang trực tuyến"
     : "Đã ngoại tuyến";
   elements.chatPanel.classList.toggle("is-offline", !isOnline);
-  elements.messageInput.disabled = state.isUploading;
-  elements.attachButton.disabled = state.isUploading;
-  elements.sendButton.disabled = state.isUploading;
+  elements.messageInput.disabled = state.isUploading || Boolean(state.recording);
+  elements.attachButton.disabled = state.isUploading || Boolean(state.recording);
+  elements.recordButton.disabled =
+    state.isUploading || Boolean(state.recording) || Boolean(state.selectedFile);
+  elements.sendButton.disabled = state.isUploading || Boolean(state.recording);
   elements.messageInput.placeholder = "Nhập tin nhắn...";
   elements.inputHint.textContent = state.isUploading
     ? "Đang tải file lên..."
@@ -669,9 +720,11 @@ function createConversationItem(conversation) {
   preview.textContent = last
     ? last.type === "image"
       ? "Đã gửi ảnh"
-      : last.type === "file"
-        ? `File: ${last.fileName || "đính kèm"}`
-        : last.body || "Tin nhắn mới"
+      : last.type === "voice"
+        ? "Tin thoại"
+        : last.type === "file"
+          ? `File: ${last.fileName || "đính kèm"}`
+          : last.body || "Tin nhắn mới"
     : "Bắt đầu trò chuyện";
   copy.append(name, preview);
   button.append(avatar, copy);
@@ -845,23 +898,56 @@ function emitPrivateMessage(payload) {
   });
 }
 
-async function uploadSelectedFile(file) {
-  const csrfToken = await ensureCsrfToken();
-  const formData = new FormData();
-  formData.append("file", file);
-  const response = await fetch("/api/uploads", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "X-CSRF-Token": csrfToken
-    },
-    body: formData
+function uploadFileWithProgress(file, extraFields = {}) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const csrfToken = await ensureCsrfToken();
+      const formData = new FormData();
+      formData.append("file", file);
+      for (const [key, value] of Object.entries(extraFields)) {
+        if (value !== undefined && value !== null) {
+          formData.append(key, String(value));
+        }
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/uploads");
+      xhr.withCredentials = true;
+      xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+      xhr.upload.addEventListener("progress", (event) => {
+        if (!event.lengthComputable) return;
+        const percent = Math.round((event.loaded / event.total) * 100);
+        setUploadProgress(percent);
+      });
+      xhr.addEventListener("load", () => {
+        setUploadProgress(null);
+        let result = {};
+        try {
+          result = JSON.parse(xhr.responseText || "{}");
+        } catch (_error) {
+          reject(new Error("Phản hồi upload không hợp lệ."));
+          return;
+        }
+        if (xhr.status >= 200 && xhr.status < 300 && result.ok) {
+          resolve(result.file);
+          return;
+        }
+        reject(new Error(result.error || "Không thể upload file."));
+      });
+      xhr.addEventListener("error", () => {
+        setUploadProgress(null);
+        reject(new Error("Không thể upload file."));
+      });
+      xhr.send(formData);
+    } catch (error) {
+      setUploadProgress(null);
+      reject(error);
+    }
   });
-  const result = await response.json();
-  if (!response.ok || !result?.ok) {
-    throw new Error(result?.error || "Không thể upload file.");
-  }
-  return result.file;
+}
+
+async function uploadSelectedFile(file, extraFields = {}) {
+  return uploadFileWithProgress(file, extraFields);
 }
 
 async function sendFileMessage(fileMeta) {
@@ -874,6 +960,7 @@ async function sendFileMessage(fileMeta) {
     fileName: fileMeta.fileName,
     mimeType: fileMeta.mimeType,
     size: fileMeta.size,
+    durationMs: fileMeta.durationMs || null,
     replyToMessageId: state.replyTo?.id || null
   });
   if (!response?.ok) throw new Error(response?.error || "Không thể gửi file.");
@@ -896,6 +983,136 @@ async function sendTextMessage(text) {
   if (response.message?.conversationId) {
     state.selectedConversationId = response.message.conversationId;
     loadConversations();
+  }
+}
+
+function updateRecordingTimer() {
+  if (!state.recording?.startedAt || !elements.recordingTimer) return;
+  const elapsed = Date.now() - state.recording.startedAt;
+  elements.recordingTimer.textContent = formatDuration(elapsed);
+}
+
+function hideRecordingUi() {
+  elements.recordingStatus?.classList.add("is-hidden");
+  elements.recordButton?.classList.remove("is-recording");
+  if (state.recording?.timerId) {
+    window.clearInterval(state.recording.timerId);
+  }
+  if (state.recording?.stream) {
+    state.recording.stream.getTracks().forEach((track) => track.stop());
+  }
+  state.recording = null;
+  setComposerDisabled(false);
+}
+
+async function startRecording() {
+  if (!state.selectedUser || state.isUploading || state.selectedFile) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showToast("Trình duyệt không hỗ trợ ghi âm.", "error");
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+      ? "audio/webm"
+      : "audio/ogg";
+    const mediaRecorder = new MediaRecorder(stream, { mimeType });
+    const chunks = [];
+
+    mediaRecorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    });
+
+    mediaRecorder.start(250);
+    state.recording = {
+      mediaRecorder,
+      stream,
+      chunks,
+      mimeType,
+      startedAt: Date.now(),
+      timerId: window.setInterval(() => {
+        updateRecordingTimer();
+        const elapsed = Date.now() - state.recording.startedAt;
+        if (elapsed >= MAX_VOICE_SECONDS * 1000) {
+          stopRecording();
+        }
+      }, 250)
+    };
+
+    elements.recordingStatus?.classList.remove("is-hidden");
+    elements.recordButton?.classList.add("is-recording");
+    updateRecordingTimer();
+    setComposerDisabled(true);
+  } catch (_error) {
+    showToast("Không thể truy cập microphone.", "error");
+  }
+}
+
+function stopRecording() {
+  if (!state.recording) return;
+  const { mediaRecorder } = state.recording;
+  if (mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+  }
+  updateRecordingTimer();
+}
+
+function cancelRecording() {
+  hideRecordingUi();
+}
+
+async function sendVoiceRecording() {
+  if (!state.recording || !state.selectedUser) return;
+
+  const recording = state.recording;
+  await new Promise((resolve) => {
+    if (recording.mediaRecorder.state === "inactive") {
+      resolve();
+      return;
+    }
+    recording.mediaRecorder.addEventListener("stop", resolve, { once: true });
+    recording.mediaRecorder.stop();
+  });
+
+  const durationMs = Date.now() - recording.startedAt;
+  const chunks = [...recording.chunks];
+  const mimeType = recording.mimeType;
+  hideRecordingUi();
+
+  if (durationMs < 500) {
+    showToast("Tin thoại quá ngắn.", "error");
+    return;
+  }
+
+  const blob = new Blob(chunks, { type: mimeType });
+  const file = new File([blob], `voice-${Date.now()}.webm`, {
+    type: mimeType
+  });
+
+  state.isUploading = true;
+  setComposerDisabled(true);
+  const isOnline = state.onlineUsers.some(
+    (user) => user.id === state.selectedUser.id
+  );
+  renderConversationHeader(state.selectedUser, isOnline);
+
+  try {
+    const fileMeta = await uploadSelectedFile(file, {
+      kind: "voice",
+      durationMs
+    });
+    await sendFileMessage(fileMeta);
+    clearReplyTarget();
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    state.isUploading = false;
+    renderConversationHeader(
+      state.selectedUser,
+      state.onlineUsers.some((user) => user.id === state.selectedUser.id)
+    );
+    setComposerDisabled(false);
   }
 }
 
@@ -1167,6 +1384,16 @@ if (page === "chat") {
 
   elements.removeFileButton?.addEventListener("click", clearSelectedFile);
 
+  elements.recordButton?.addEventListener("click", () => {
+    if (state.recording) {
+      stopRecording();
+      return;
+    }
+    startRecording();
+  });
+  elements.cancelRecordingButton?.addEventListener("click", cancelRecording);
+  elements.sendRecordingButton?.addEventListener("click", sendVoiceRecording);
+
   elements.messageInput.addEventListener("input", () => {
     if (!state.selectedUser || !state.selectedConversationId) return;
     if (!state.isTyping && elements.messageInput.value.trim()) {
@@ -1318,9 +1545,11 @@ if (page === "chat") {
       const preview =
         message.type === "image"
           ? "một ảnh"
-          : message.type === "file"
-            ? "một file"
-            : "một tin nhắn";
+          : message.type === "voice"
+            ? "một tin thoại"
+            : message.type === "file"
+              ? "một file"
+              : "một tin nhắn";
       showToast(`${message.senderName} vừa gửi cho bạn ${preview}.`);
     } else {
       loadConversations();

@@ -206,7 +206,11 @@ function registerSocketController(io) {
             message: content,
             replyToMessageId: payload.replyToMessageId || null
           };
-        } else if (messageType === "image" || messageType === "file") {
+        } else if (
+          messageType === "image" ||
+          messageType === "file" ||
+          messageType === "voice"
+        ) {
           const pendingUpload = uploadModel.consumePendingUpload(
             user.id,
             payload.fileKey
@@ -221,7 +225,7 @@ function registerSocketController(io) {
           }
 
           if (
-            pendingUpload.fileUrl !== payload.fileUrl ||
+            pendingUpload.fileKey !== payload.fileKey ||
             pendingUpload.fileName !== payload.fileName ||
             pendingUpload.mimeType !== payload.mimeType ||
             Number(pendingUpload.size) !== Number(payload.size)
@@ -233,6 +237,17 @@ function registerSocketController(io) {
             return;
           }
 
+          if (
+            pendingUpload.kind === "voice" &&
+            Number(pendingUpload.durationMs) !== Number(payload.durationMs)
+          ) {
+            reply(callback, {
+              ok: false,
+              error: "Thời lượng voice không khớp với upload đã xác thực."
+            });
+            return;
+          }
+
           messagePayload = {
             type: pendingUpload.kind,
             fileUrl: pendingUpload.fileUrl,
@@ -240,6 +255,7 @@ function registerSocketController(io) {
             fileName: pendingUpload.fileName,
             mimeType: pendingUpload.mimeType,
             size: pendingUpload.size,
+            durationMs: pendingUpload.durationMs || null,
             replyToMessageId: payload.replyToMessageId || null
           };
         } else {

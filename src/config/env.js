@@ -65,6 +65,27 @@ module.exports = {
   get maxUploadBytes() {
     return getMaxUploadBytes();
   },
+  get maxImageBytes() {
+    const value = Number(process.env.MAX_IMAGE_BYTES) || getMaxUploadBytes();
+    return Number.isFinite(value) ? value : getMaxUploadBytes();
+  },
+  get maxVoiceBytes() {
+    const value = Number(process.env.MAX_VOICE_BYTES) || 10485760;
+    return Number.isFinite(value) ? value : 10485760;
+  },
+  get maxVoiceSeconds() {
+    const value = Number(process.env.MAX_VOICE_SECONDS) || 120;
+    return Number.isFinite(value) ? value : 120;
+  },
+  get supabaseStoragePublic() {
+    const raw = process.env.SUPABASE_STORAGE_PUBLIC;
+    if (raw === undefined || raw === "") return true;
+    return raw === "true" || raw === "1";
+  },
+  get signedUrlTtlSeconds() {
+    const value = Number(process.env.SIGNED_URL_TTL_SECONDS) || 3600;
+    return Number.isFinite(value) ? value : 3600;
+  },
   get nodeEnv() {
     return process.env.NODE_ENV || "development";
   },

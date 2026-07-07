@@ -6,7 +6,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     files: 1,
-    fileSize: config.maxUploadBytes
+    fileSize: Math.max(config.maxUploadBytes, config.maxVoiceBytes)
   },
   fileFilter(req, file, callback) {
     if (!isAllowedMimeType(file.mimetype)) {

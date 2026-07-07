@@ -1,6 +1,7 @@
 const { query } = require("../db");
 const { getCurrentTime } = require("../utils/time");
 const reactionRepository = require("./reaction.repository");
+const { resolveFileUrl } = require("../services/storage.service");
 
 function mapMessageRow(row, senderName, reactions = []) {
   const createdAt = row.created_at;
@@ -20,6 +21,7 @@ function mapMessageRow(row, senderName, reactions = []) {
     fileName: isDeleted ? null : row.file_name || null,
     mimeType: isDeleted ? null : row.mime_type || null,
     size: isDeleted ? null : row.file_size || null,
+    durationMs: isDeleted ? null : row.duration_ms || null,
     replyToMessageId: row.reply_to_message_id || null,
     isEdited: Boolean(row.is_edited),
     editedAt: row.edited_at || null,
@@ -41,6 +43,23 @@ async function attachReactions(messages) {
   }));
 }
 
+async function enrichFileUrls(messages) {
+  const enriched = [];
+  for (const message of messages) {
+    if (!message.isDeleted && message.fileKey) {
+      try {
+        const fileUrl = await resolveFileUrl(message.fileKey);
+        enriched.push({ ...message, fileUrl });
+      } catch (_error) {
+        enriched.push(message);
+      }
+    } else {
+      enriched.push(message);
+    }
+  }
+  return enriched;
+}
+
 async function createMessage({
   conversationId,
   senderId,
@@ -53,14 +72,15 @@ async function createMessage({
   fileName,
   mimeType,
   fileSize,
+  durationMs,
   replyToMessageId
 }) {
   const result = await query(
     `INSERT INTO messages (
        conversation_id, sender_id, type, body,
        file_url, file_key, file_name, mime_type, file_size,
-       reply_to_message_id
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       duration_ms, reply_to_message_id
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
       conversationId,
@@ -72,10 +92,13 @@ async function createMessage({
       fileName || null,
       mimeType || null,
       fileSize || null,
+      durationMs || null,
       replyToMessageId || null
     ]
   );
-  return mapMessageRow(result.rows[0], senderName);
+  const message = mapMessageRow(result.rows[0], senderName);
+  const [withUrl] = await enrichFileUrls([message]);
+  return withUrl;
 }
 
 async function listByConversation({
@@ -112,11 +135,12 @@ async function listByConversation({
     );
 
   const withReactions = await attachReactions(messages);
+  const withUrls = await enrichFileUrls(withReactions);
   const nextCursor =
     result.rows.length === safeLimit ? result.rows[0]?.id || null : null;
 
   return {
-    messages: withReactions,
+    messages: withUrls,
     nextCursor,
     hasMore: Boolean(nextCursor)
   };
@@ -136,7 +160,8 @@ async function findById(messageId, { includeDeleted = true } = {}) {
   const message = mapMessageRow(row, row.display_name || row.sender_name);
   const reactions = await reactionRepository.listByMessageIds([messageId]);
   message.reactions = reactions.get(messageId) || [];
-  return message;
+  const [withUrl] = await enrichFileUrls([message]);
+  return withUrl;
 }
 
 async function findRawById(messageId) {
@@ -229,11 +254,12 @@ async function searchInConversation({
     mapMessageRow(row, row.display_name || row.sender_name)
   );
   const withReactions = await attachReactions(messages);
+  const withUrls = await enrichFileUrls(withReactions);
   const nextCursor =
     result.rows.length === safeLimit ? result.rows[0]?.id || null : null;
 
   return {
-    messages: withReactions,
+    messages: withUrls,
     nextCursor,
     hasMore: Boolean(nextCursor)
   };
