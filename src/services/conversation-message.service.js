@@ -106,7 +106,10 @@ async function sendRoomMessage({ user, conversationId, payload, expectedType }) 
     senderId: user.id,
     senderName: user.displayName || user.username,
     receiverId: null,
-    payload: messagePayload
+    payload: {
+      ...messagePayload,
+      actorRole: user.role || "user"
+    }
   });
 
   await conversationRepository.touchConversation(conversationId);

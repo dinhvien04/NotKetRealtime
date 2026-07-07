@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Nối Kết Realtime</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body data-page="admin">
+  <section class="admin-screen">
+    <header class="app-header">
+      <div class="app-header-left">
+        <a class="brand" href="/chat" aria-label="Về chat">
+          <span class="brand-mark" aria-hidden="true">N</span>
+          <span>Nối Kết Realtime</span>
+        </a>
+        <span class="admin-badge">Admin</span>
+      </div>
+      <div class="account-area">
+        <strong id="adminUsername"></strong>
+        <a class="profile-button" href="/chat">Về chat</a>
+      </div>
+    </header>
+
+    <div class="admin-layout">
+      <nav class="admin-nav" aria-label="Admin menu">
+        <button class="admin-nav-btn is-active" type="button" data-panel="stats">Thống kê</button>
+        <button class="admin-nav-btn" type="button" data-panel="users">Người dùng</button>
+        <button class="admin-nav-btn" type="button" data-panel="messages">Tin nhắn</button>
+        <button class="admin-nav-btn" type="button" data-panel="badwords">Từ cấm</button>
+        <button class="admin-nav-btn" type="button" data-panel="audit">Audit logs</button>
+      </nav>
+
+      <main class="admin-main">
+        <section class="admin-panel is-active" id="panelStats">
+          <h1>Thống kê hệ thống</h1>
+          <div class="admin-stats-grid" id="statsGrid"></div>
+        </section>
+
+        <section class="admin-panel" id="panelUsers">
+          <div class="admin-panel-head">
+            <h1>Người dùng</h1>
+            <form class="admin-filter-form" id="usersFilterForm">
+              <input type="search" name="q" placeholder="Tìm username/email">
+              <select name="role">
+                <option value="">Tất cả role</option>
+                <option value="user">user</option>
+                <option value="moderator">moderator</option>
+                <option value="admin">admin</option>
+              </select>
+              <button type="submit">Lọc</button>
+            </form>
+          </div>
+          <div class="admin-table-wrap" id="usersTable"></div>
+        </section>
+
+        <section class="admin-panel" id="panelMessages">
+          <div class="admin-panel-head">
+            <h1>Tin nhắn</h1>
+            <form class="admin-filter-form" id="messagesFilterForm">
+              <input type="search" name="q" placeholder="Tìm nội dung">
+              <button type="submit">Tìm</button>
+            </form>
+          </div>
+          <div class="admin-table-wrap" id="messagesTable"></div>
+        </section>
+
+        <section class="admin-panel" id="panelBadwords">
+          <div class="admin-panel-head">
+            <h1>Từ cấm</h1>
+            <form class="admin-inline-form" id="badWordForm">
+              <input type="text" name="word" placeholder="Từ cấm" required maxlength="80">
+              <select name="severity">
+                <option value="low">low - thay thế</option>
+                <option value="medium">medium - thay + audit</option>
+                <option value="high">high - chặn</option>
+              </select>
+              <button type="submit">Thêm</button>
+            </form>
+          </div>
+          <p class="form-error" id="badWordError" role="alert"></p>
+          <div class="admin-table-wrap" id="badWordsTable"></div>
+        </section>
+
+        <section class="admin-panel" id="panelAudit">
+          <h1>Audit logs</h1>
+          <div class="admin-table-wrap" id="auditTable"></div>
+        </section>
+      </main>
+    </div>
+  </section>
+
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+  <script src="/js/admin.js" defer></script>
+</body>
+</html>

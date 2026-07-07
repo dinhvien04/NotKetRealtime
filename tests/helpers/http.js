@@ -23,6 +23,10 @@ function extractCookie(response, cookieName) {
 }
 
 function waitForSocketConnect(socket, timeout = 8000) {
+  if (socket.connected) {
+    return Promise.resolve();
+  }
+
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error("Socket connect timeout."));

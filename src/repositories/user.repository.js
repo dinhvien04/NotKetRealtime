@@ -126,6 +126,116 @@ async function updatePassword(userId, passwordHash) {
   );
 }
 
+function toAdminUser(row) {
+  if (!row) return null;
+  return {
+    ...toPublicUser(row),
+    isLocked: Boolean(row.is_locked),
+    lockedReason: row.locked_reason || null
+  };
+}
+
+async function listForAdmin({
+  q = "",
+  status = "",
+  role = "",
+  page = 1,
+  pageSize = 20
+} = {}) {
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safeSize = Math.min(Math.max(Number(pageSize) || 20, 1), 50);
+  const offset = (safePage - 1) * safeSize;
+  const params = [];
+  const filters = [];
+  let index = 1;
+
+  if (q) {
+    params.push(`%${String(q).trim().toLowerCase()}%`);
+    filters.push(
+      `(LOWER(username) LIKE $${index} OR LOWER(email) LIKE $${index} OR LOWER(display_name) LIKE $${index})`
+    );
+    index += 1;
+  }
+
+  if (status) {
+    params.push(status);
+    filters.push(`status = $${index++}`);
+  }
+
+  if (role) {
+    params.push(role);
+    filters.push(`role = $${index++}`);
+  }
+
+  const whereSql = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+
+  const countResult = await query(
+    `SELECT COUNT(*)::int AS total FROM users ${whereSql}`,
+    params
+  );
+
+  params.push(safeSize, offset);
+  const result = await query(
+    `SELECT ${USER_COLUMNS}
+     FROM users ${whereSql}
+     ORDER BY created_at DESC
+     LIMIT $${index++} OFFSET $${index}`,
+    params
+  );
+
+  return {
+    users: result.rows.map(toAdminUser),
+    total: countResult.rows[0]?.total || 0,
+    page: safePage,
+    pageSize: safeSize
+  };
+}
+
+async function updateAdminFields(userId, fields = {}) {
+  const sets = ["updated_at = now()"];
+  const params = [userId];
+  let index = 2;
+
+  if (fields.displayName !== undefined) {
+    sets.push(`display_name = $${index++}`);
+    params.push(fields.displayName);
+  }
+
+  if (fields.role !== undefined) {
+    sets.push(`role = $${index++}`);
+    params.push(fields.role);
+  }
+
+  if (fields.status !== undefined) {
+    sets.push(`status = $${index++}`);
+    params.push(fields.status);
+  }
+
+  if (fields.isLocked !== undefined) {
+    sets.push(`is_locked = $${index++}`);
+    params.push(Boolean(fields.isLocked));
+  }
+
+  if (fields.lockedReason !== undefined) {
+    sets.push(`locked_reason = $${index++}`);
+    params.push(fields.lockedReason || null);
+  }
+
+  const result = await query(
+    `UPDATE users SET ${sets.join(", ")} WHERE id = $1 RETURNING ${USER_COLUMNS}`,
+    params
+  );
+  return toAdminUser(result.rows[0]);
+}
+
+async function setRole(userId, role) {
+  const result = await query(
+    `UPDATE users SET role = $2, updated_at = now() WHERE id = $1 RETURNING ${USER_COLUMNS}`,
+    [userId, role]
+  );
+  return toAdminUser(result.rows[0]);
+}
+
 module.exports = {
   createUser,
   findById,
@@ -136,5 +246,9 @@ module.exports = {
   updateLastSeen,
   updateProfile,
   updatePassword,
-  toPublicUser
+  toPublicUser,
+  toAdminUser,
+  listForAdmin,
+  updateAdminFields,
+  setRole
 };

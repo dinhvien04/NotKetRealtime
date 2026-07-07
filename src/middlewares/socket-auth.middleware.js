@@ -30,14 +30,17 @@ async function socketAuthMiddleware(socket, next) {
 
     const payload = authService.verifyToken(token);
     const user = await userRepository.findById(payload.sub);
-    if (!user) {
+    if (!user || user.is_locked || user.status !== "active") {
       return next(new Error("Unauthorized"));
     }
+
+    authService.assertTokenNotRevoked(user, payload);
 
     socket.data.user = {
       id: user.id,
       username: user.username,
-      displayName: user.display_name || user.username
+      displayName: user.display_name || user.username,
+      role: user.role || "user"
     };
     return next();
   } catch (error) {

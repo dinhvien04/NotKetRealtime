@@ -4,6 +4,7 @@ const reactionRepository = require("../repositories/reaction.repository");
 const conversationRepository = require("../repositories/conversation.repository");
 const userRepository = require("../repositories/user.repository");
 const auditService = require("./audit.service");
+const badWordService = require("./bad-word.service");
 const { sanitizeMessage } = require("../utils/sanitize");
 const { isAllowedReaction } = require("../utils/emoji");
 
@@ -68,8 +69,8 @@ async function getMessageForActor(messageId, actorId) {
 }
 
 async function editMessage(actorId, messageId, body, req = null) {
-  const content = sanitizeMessage(body);
-  if (!content) {
+  const sanitized = sanitizeMessage(body);
+  if (!sanitized) {
     throw new Error("Nội dung tin nhắn không hợp lệ.");
   }
 
@@ -78,7 +79,15 @@ async function editMessage(actorId, messageId, body, req = null) {
     throw new Error("Bạn không có quyền chỉnh sửa tin nhắn này.");
   }
 
-  const updated = await messageRepository.editMessage(messageId, content);
+  const filtered = await badWordService.applyTextFilter(sanitized, {
+    auditContext: {
+      actorId: actor.id,
+      actorRole: actor.role,
+      req
+    }
+  });
+
+  const updated = await messageRepository.editMessage(messageId, filtered.text);
   const isAdminAction = isAdmin(actor) && message.sender_id !== actor.id;
 
   if (isAdminAction) {

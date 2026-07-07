@@ -28,6 +28,8 @@ function mapMessageRow(row, senderName, reactions = []) {
     isDeleted,
     deletedAt: row.deleted_at || null,
     deletedBy: row.deleted_by || null,
+    wasFiltered: Boolean(row.was_filtered),
+    filterHits: row.filter_hits || [],
     reactions,
     createdAt,
     time: getCurrentTime(new Date(createdAt))
@@ -73,14 +75,16 @@ async function createMessage({
   mimeType,
   fileSize,
   durationMs,
-  replyToMessageId
+  replyToMessageId,
+  wasFiltered = false,
+  filterHits = []
 }) {
   const result = await query(
     `INSERT INTO messages (
        conversation_id, sender_id, type, body,
        file_url, file_key, file_name, mime_type, file_size,
-       duration_ms, reply_to_message_id
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       duration_ms, reply_to_message_id, was_filtered, filter_hits
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING *`,
     [
       conversationId,
@@ -93,7 +97,9 @@ async function createMessage({
       mimeType || null,
       fileSize || null,
       durationMs || null,
-      replyToMessageId || null
+      replyToMessageId || null,
+      Boolean(wasFiltered),
+      filterHits?.length ? filterHits : null
     ]
   );
   const message = mapMessageRow(result.rows[0], senderName);
@@ -289,6 +295,108 @@ async function countUnread(conversationId, userId, lastReadMessageId) {
   return result.rows[0]?.unread_count || 0;
 }
 
+async function listForAdmin({
+  q = "",
+  conversationId = null,
+  userId = null,
+  type = null,
+  page = 1,
+  pageSize = 30
+} = {}) {
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safeSize = Math.min(Math.max(Number(pageSize) || 30, 1), 50);
+  const offset = (safePage - 1) * safeSize;
+  const params = [];
+  const filters = ["m.deleted_at IS NULL"];
+  let index = 1;
+
+  if (q) {
+    params.push(q.trim());
+    filters.push(
+      `to_tsvector('simple', coalesce(m.body, '') || ' ' || coalesce(m.file_name, ''))
+       @@ plainto_tsquery('simple', $${index++})`
+    );
+  }
+
+  if (conversationId) {
+    params.push(conversationId);
+    filters.push(`m.conversation_id = $${index++}`);
+  }
+
+  if (userId) {
+    params.push(userId);
+    filters.push(`m.sender_id = $${index++}`);
+  }
+
+  if (type) {
+    params.push(type);
+    filters.push(`m.type = $${index++}`);
+  }
+
+  const whereSql = `WHERE ${filters.join(" AND ")}`;
+
+  const countResult = await query(
+    `SELECT COUNT(*)::int AS total FROM messages m ${whereSql}`,
+    params
+  );
+
+  params.push(safeSize, offset);
+  const result = await query(
+    `SELECT m.*, u.username AS sender_name, u.display_name
+     FROM messages m
+     JOIN users u ON u.id = m.sender_id
+     ${whereSql}
+     ORDER BY m.created_at DESC
+     LIMIT $${index++} OFFSET $${index}`,
+    params
+  );
+
+  const messages = result.rows.map((row) =>
+    mapMessageRow(row, row.display_name || row.sender_name)
+  );
+
+  return {
+    messages,
+    total: countResult.rows[0]?.total || 0,
+    page: safePage,
+    pageSize: safeSize
+  };
+}
+
+async function getAdminStats() {
+  const result = await query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM users) AS total_users,
+       (SELECT COUNT(*)::int FROM users WHERE status = 'active' AND is_locked = false) AS active_users,
+       (SELECT COUNT(*)::int FROM users WHERE is_locked = true) AS locked_users,
+       (SELECT COUNT(*)::int FROM messages WHERE deleted_at IS NULL) AS total_messages,
+       (SELECT COUNT(*)::int FROM messages
+         WHERE deleted_at IS NULL AND created_at >= date_trunc('day', now())) AS messages_today,
+       (SELECT COUNT(*)::int FROM messages
+         WHERE deleted_at IS NULL AND file_key IS NOT NULL) AS files_uploaded,
+       (SELECT COALESCE(SUM(file_size), 0)::bigint FROM messages
+         WHERE deleted_at IS NULL AND file_size IS NOT NULL) AS storage_used_bytes,
+       (SELECT COUNT(*)::int FROM conversations WHERE type = 'direct') AS direct_conversations,
+       (SELECT COUNT(*)::int FROM conversations WHERE type = 'group') AS group_conversations,
+       (SELECT COUNT(*)::int FROM conversations WHERE type = 'public') AS public_conversations`
+  );
+  const row = result.rows[0] || {};
+  return {
+    totalUsers: row.total_users || 0,
+    activeUsers: row.active_users || 0,
+    lockedUsers: row.locked_users || 0,
+    totalMessages: row.total_messages || 0,
+    messagesToday: row.messages_today || 0,
+    filesUploaded: row.files_uploaded || 0,
+    storageUsedBytes: Number(row.storage_used_bytes || 0),
+    conversations: {
+      direct: row.direct_conversations || 0,
+      group: row.group_conversations || 0,
+      public: row.public_conversations || 0
+    }
+  };
+}
+
 module.exports = {
   createMessage,
   listByConversation,
@@ -299,5 +407,7 @@ module.exports = {
   searchInConversation,
   countUnread,
   mapMessageRow,
-  attachReactions
+  attachReactions,
+  listForAdmin,
+  getAdminStats
 };

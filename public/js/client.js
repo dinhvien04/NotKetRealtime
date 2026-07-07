@@ -105,7 +105,8 @@ const elements = {
   groupNameInput: document.getElementById("groupNameInput"),
   groupMembersInput: document.getElementById("groupMembersInput"),
   groupError: document.getElementById("groupError"),
-  conversationTypeChip: document.getElementById("conversationTypeChip")
+  conversationTypeChip: document.getElementById("conversationTypeChip"),
+  adminLink: document.getElementById("adminLink")
 };
 
 const state = {
@@ -279,6 +280,25 @@ function canDeleteOwnMessage(message) {
   return message.senderId === state.currentUser?.id;
 }
 
+function isStaffUser() {
+  const role = state.currentUser?.role;
+  return role === "admin" || role === "moderator";
+}
+
+function updateAdminLink() {
+  if (!elements.adminLink) return;
+  if (isStaffUser()) {
+    elements.adminLink.classList.remove("is-hidden");
+  } else {
+    elements.adminLink.classList.add("is-hidden");
+  }
+}
+
+function canModerateMessage(message) {
+  if (!message || message.isDeleted) return false;
+  return isStaffUser();
+}
+
 function setReplyTarget(message) {
   state.replyTo = {
     id: message.id,
@@ -359,11 +379,13 @@ function createMessageActions(message) {
     actions.append(editBtn);
   }
 
-  if (canDeleteOwnMessage(message)) {
+  if (canDeleteOwnMessage(message) || canModerateMessage(message)) {
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
     deleteBtn.className = "message-action-btn";
-    deleteBtn.textContent = "Xóa";
+    deleteBtn.textContent = canModerateMessage(message) && !canDeleteOwnMessage(message)
+      ? "Xóa (mod)"
+      : "Xóa";
     deleteBtn.addEventListener("click", () => deleteMessage(message.id));
     actions.append(deleteBtn);
   }
@@ -1093,6 +1115,7 @@ function joinChat() {
       elements.currentAvatar,
       response.user.displayName || response.user.username
     );
+    updateAdminLink();
     setConnectionVisible(false);
     loadConversations();
     loadPublicRoom();
@@ -1603,6 +1626,7 @@ if (page === "chat") {
         elements.currentAvatar,
         data.user.displayName || data.user.username
       );
+      updateAdminLink();
       if (socket.connected) joinChat();
     })
     .catch(() => {

@@ -1,6 +1,7 @@
 const config = require("../config/env");
 const messageRepository = require("../repositories/message.repository");
 const messageService = require("../services/message.service");
+const badWordService = require("../services/bad-word.service");
 const {
   isAllowedMimeType,
   getKindFromMimeType,
@@ -89,14 +90,22 @@ async function createMessage({
   );
 
   if (type === "text") {
-    const body = validateTextMessage(payload);
+    const rawBody = validateTextMessage(payload);
+    const filtered = await badWordService.applyTextFilter(rawBody, {
+      auditContext: {
+        actorId: senderId,
+        actorRole: payload.actorRole || "user"
+      }
+    });
     return messageRepository.createMessage({
       conversationId,
       senderId,
       senderName,
       receiverId,
       type: "text",
-      body,
+      body: filtered.text,
+      wasFiltered: filtered.wasFiltered,
+      filterHits: filtered.hits,
       replyToMessageId
     });
   }

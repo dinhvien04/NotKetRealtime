@@ -8,5 +8,6 @@ function sendView(fileName) {
 
 module.exports = {
   showHome: sendView("index.html"),
-  showChat: sendView("chat.html")
+  showChat: sendView("chat.html"),
+  showAdmin: sendView("admin.html")
 };

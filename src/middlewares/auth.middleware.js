@@ -1,6 +1,8 @@
 const config = require("../config/env");
 const authService = require("../services/auth.service");
 
+const STAFF_ROLES = new Set(["admin", "moderator"]);
+
 function getTokenFromRequest(req) {
   return req.cookies?.[config.cookieName] || null;
 }
@@ -81,10 +83,30 @@ function requireAuthPage(req, res, next) {
   }
 }
 
+async function requireStaffPage(req, res, next) {
+  const token = getTokenFromRequest(req);
+  if (!token) {
+    return res.redirect("/?auth=login");
+  }
+
+  try {
+    const user = await authService.getUserFromToken(token);
+    if (!STAFF_ROLES.has(user.role)) {
+      return res.redirect("/chat");
+    }
+    req.user = user;
+    return next();
+  } catch (error) {
+    clearAuthCookie(res);
+    return res.redirect("/?auth=login");
+  }
+}
+
 module.exports = {
   requireAuth,
   optionalAuth,
   requireAuthPage,
+  requireStaffPage,
   getTokenFromRequest,
   setAuthCookie,
   clearAuthCookie

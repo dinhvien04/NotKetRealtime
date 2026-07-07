@@ -188,6 +188,7 @@ module.exports = {
   getAuthConfigError,
   createToken,
   verifyToken,
+  assertTokenNotRevoked,
   register,
   login,
   getUserFromToken,
