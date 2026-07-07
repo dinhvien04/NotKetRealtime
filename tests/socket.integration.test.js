@@ -7,6 +7,7 @@ const { Server } = require("socket.io");
 const { io: createClient } = require("socket.io-client");
 const app = require("../src/app");
 const registerSocketController = require("../src/controllers/socket.controller");
+const realtimeService = require("../src/services/realtime.service");
 const { socketAuthMiddleware } = require("../src/middlewares/socket-auth.middleware");
 const uploadModel = require("../src/models/upload.model");
 const { getDatabaseError, closePool } = require("../src/db");
@@ -88,6 +89,7 @@ async function run() {
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, { cors: { origin: true, credentials: true } });
   io.use(socketAuthMiddleware);
+  realtimeService.setIo(io);
   registerSocketController(io);
 
   await new Promise((resolve) => httpServer.listen(0, "127.0.0.1", resolve));

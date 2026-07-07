@@ -1,0 +1,117 @@
+const conversationRepository = require("../repositories/conversation.repository");
+const userRepository = require("../repositories/user.repository");
+const auditService = require("./audit.service");
+
+async function createGroup(ownerId, { name, memberIds = [] }, req = null) {
+  const owner = await userRepository.findById(ownerId);
+  if (!owner) {
+    throw new Error("Người dùng không tồn tại.");
+  }
+
+  const validMemberIds = [];
+  for (const memberId of memberIds) {
+    if (!memberId || memberId === ownerId) continue;
+    const member = await userRepository.findById(memberId);
+    if (member) {
+      validMemberIds.push(memberId);
+    }
+  }
+
+  const group = await conversationRepository.createGroup({
+    name,
+    ownerId,
+    memberIds: validMemberIds
+  });
+
+  await auditService.log({
+    actorId: ownerId,
+    actorRole: owner.role,
+    action: "group.create",
+    targetType: "conversation",
+    targetId: group.id,
+    details: { name: group.name, memberCount: validMemberIds.length + 1 },
+    req
+  });
+
+  return group;
+}
+
+async function updateGroup(conversationId, actorId, updates, req = null) {
+  const group = await conversationRepository.updateGroup(
+    conversationId,
+    actorId,
+    updates
+  );
+
+  const actor = await userRepository.findById(actorId);
+  await auditService.log({
+    actorId,
+    actorRole: actor?.role || "user",
+    action: "group.update",
+    targetType: "conversation",
+    targetId: conversationId,
+    details: { fields: Object.keys(updates) },
+    req
+  });
+
+  return group;
+}
+
+async function addParticipant(conversationId, actorId, targetUserId, req = null) {
+  const target = await userRepository.findById(targetUserId);
+  if (!target) {
+    throw new Error("Người dùng không tồn tại.");
+  }
+
+  const participants = await conversationRepository.addGroupParticipant(
+    conversationId,
+    actorId,
+    targetUserId
+  );
+
+  const actor = await userRepository.findById(actorId);
+  await auditService.log({
+    actorId,
+    actorRole: actor?.role || "user",
+    action: "group.add_member",
+    targetType: "conversation",
+    targetId: conversationId,
+    details: { userId: targetUserId },
+    req
+  });
+
+  return participants;
+}
+
+async function removeParticipant(
+  conversationId,
+  actorId,
+  targetUserId,
+  req = null
+) {
+  const participants = await conversationRepository.removeGroupParticipant(
+    conversationId,
+    actorId,
+    targetUserId
+  );
+
+  const actor = await userRepository.findById(actorId);
+  await auditService.log({
+    actorId,
+    actorRole: actor?.role || "user",
+    action: actorId === targetUserId ? "group.leave" : "group.remove_member",
+    targetType: "conversation",
+    targetId: conversationId,
+    details: { userId: targetUserId },
+    req
+  });
+
+  return participants;
+}
+
+module.exports = {
+  createGroup,
+  updateGroup,
+  addParticipant,
+  removeParticipant
+};

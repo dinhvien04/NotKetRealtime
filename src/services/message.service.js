@@ -30,7 +30,7 @@ function canDeleteMessage(messageRow, actorRow) {
 }
 
 async function assertParticipant(conversationId, userId) {
-  const allowed = await conversationRepository.isParticipant(
+  const allowed = await conversationRepository.canAccessConversation(
     conversationId,
     userId
   );

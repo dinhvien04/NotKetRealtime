@@ -87,7 +87,25 @@ const elements = {
   searchResults: document.getElementById("searchResults"),
   replyPreview: document.getElementById("replyPreview"),
   replyPreviewText: document.getElementById("replyPreviewText"),
-  cancelReplyButton: document.getElementById("cancelReplyButton")
+  cancelReplyButton: document.getElementById("cancelReplyButton"),
+  tabDirect: document.getElementById("tabDirect"),
+  tabOnline: document.getElementById("tabOnline"),
+  tabPublic: document.getElementById("tabPublic"),
+  tabGroups: document.getElementById("tabGroups"),
+  panelDirect: document.getElementById("panelDirect"),
+  panelOnline: document.getElementById("panelOnline"),
+  panelPublic: document.getElementById("panelPublic"),
+  panelGroups: document.getElementById("panelGroups"),
+  publicRoomList: document.getElementById("publicRoomList"),
+  groupList: document.getElementById("groupList"),
+  createGroupButton: document.getElementById("createGroupButton"),
+  groupModal: document.getElementById("groupModal"),
+  groupCloseButton: document.getElementById("groupCloseButton"),
+  groupForm: document.getElementById("groupForm"),
+  groupNameInput: document.getElementById("groupNameInput"),
+  groupMembersInput: document.getElementById("groupMembersInput"),
+  groupError: document.getElementById("groupError"),
+  conversationTypeChip: document.getElementById("conversationTypeChip")
 };
 
 const state = {
@@ -95,6 +113,11 @@ const state = {
   currentUser: null,
   selectedUser: null,
   selectedConversationId: null,
+  chatMode: "direct",
+  publicRoom: null,
+  activeConversation: null,
+  groups: [],
+  sidebarTab: "direct",
   conversations: [],
   onlineUsers: [],
   unread: new Map(),
@@ -678,26 +701,131 @@ function setUploadProgress(percent) {
   elements.uploadProgressBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
 }
 
-function renderConversationHeader(user, isOnline) {
-  const displayName = user.displayName || user.username;
-  elements.selectedUsername.textContent = displayName;
-  setAvatar(elements.selectedAvatar, displayName);
-  elements.selectedStatus.classList.toggle("is-offline", !isOnline);
-  elements.selectedStatus.lastChild.textContent = isOnline
-    ? "Đang trực tuyến"
-    : "Đã ngoại tuyến";
-  elements.chatPanel.classList.toggle("is-offline", !isOnline);
+function renderConversationHeader(user = state.selectedUser, isOnline = true) {
+  if (state.chatMode === "public" && state.publicRoom) {
+    elements.selectedUsername.textContent = state.publicRoom.name || "Phòng trò chuyện";
+    setAvatar(elements.selectedAvatar, "P");
+    elements.selectedStatus.classList.remove("is-offline");
+    elements.selectedStatus.lastChild.textContent = "Phòng công khai";
+    elements.conversationTypeChip.textContent = "Phòng chung";
+    elements.chatPanel.classList.remove("is-offline");
+  } else if (state.chatMode === "group" && state.activeConversation) {
+    elements.selectedUsername.textContent =
+      state.activeConversation.name || "Nhóm chat";
+    setAvatar(elements.selectedAvatar, state.activeConversation.name || "G");
+    elements.selectedStatus.classList.remove("is-offline");
+    elements.selectedStatus.lastChild.textContent = "Nhóm chat";
+    elements.conversationTypeChip.textContent = "Nhóm";
+    elements.chatPanel.classList.remove("is-offline");
+  } else if (user) {
+    const displayName = user.displayName || user.username;
+    elements.selectedUsername.textContent = displayName;
+    setAvatar(elements.selectedAvatar, displayName);
+    elements.selectedStatus.classList.toggle("is-offline", !isOnline);
+    elements.selectedStatus.lastChild.textContent = isOnline
+      ? "Đang trực tuyến"
+      : "Đã ngoại tuyến";
+    elements.conversationTypeChip.textContent = "Cuộc trò chuyện riêng";
+    elements.chatPanel.classList.toggle("is-offline", !isOnline);
+  }
+
   elements.messageInput.disabled = state.isUploading || Boolean(state.recording);
   elements.attachButton.disabled = state.isUploading || Boolean(state.recording);
   elements.recordButton.disabled =
     state.isUploading || Boolean(state.recording) || Boolean(state.selectedFile);
   elements.sendButton.disabled = state.isUploading || Boolean(state.recording);
   elements.messageInput.placeholder = "Nhập tin nhắn...";
-  elements.inputHint.textContent = state.isUploading
-    ? "Đang tải file lên..."
-    : isOnline
+
+  if (state.isUploading) {
+    elements.inputHint.textContent = "Đang tải file lên...";
+  } else if (state.chatMode === "public") {
+    elements.inputHint.textContent = "Tin nhắn sẽ hiển thị cho mọi người trong phòng chung.";
+  } else if (state.chatMode === "group") {
+    elements.inputHint.textContent = "Nhấn Enter để gửi tin nhắn trong nhóm.";
+  } else {
+    elements.inputHint.textContent = isOnline
       ? "Nhấn Enter để gửi hoặc đính kèm ảnh/file."
       : "Người nhận đang offline. Tin nhắn vẫn được lưu vào database.";
+  }
+}
+
+function switchSidebarTab(tab) {
+  state.sidebarTab = tab;
+  const tabs = [
+    ["direct", elements.tabDirect, elements.panelDirect],
+    ["online", elements.tabOnline, elements.panelOnline],
+    ["public", elements.tabPublic, elements.panelPublic],
+    ["groups", elements.tabGroups, elements.panelGroups]
+  ];
+  for (const [name, button, panel] of tabs) {
+    button?.classList.toggle("is-active", name === tab);
+    panel?.classList.toggle("is-hidden", name !== tab);
+  }
+}
+
+function createPublicRoomItem() {
+  if (!state.publicRoom) return null;
+  const button = document.createElement("button");
+  const avatar = document.createElement("span");
+  const copy = document.createElement("span");
+  const name = document.createElement("strong");
+  const preview = document.createElement("span");
+  button.type = "button";
+  button.className = "user-item";
+  if (state.chatMode === "public") button.classList.add("is-active");
+  avatar.className = "avatar";
+  setAvatar(avatar, "P");
+  copy.className = "user-copy";
+  name.textContent = state.publicRoom.name || "Phòng trò chuyện";
+  preview.textContent = "Chat công khai cho mọi người";
+  copy.append(name, preview);
+  button.append(avatar, copy);
+  if (state.publicRoom.unreadCount > 0) {
+    const badge = document.createElement("span");
+    badge.className = "unread-badge";
+    badge.textContent = String(state.publicRoom.unreadCount);
+    button.append(badge);
+  }
+  button.addEventListener("click", () => selectPublicRoom());
+  return button;
+}
+
+function createGroupItem(group) {
+  const button = document.createElement("button");
+  const avatar = document.createElement("span");
+  const copy = document.createElement("span");
+  const name = document.createElement("strong");
+  const preview = document.createElement("span");
+  button.type = "button";
+  button.className = "user-item";
+  if (
+    state.chatMode === "group" &&
+    state.selectedConversationId === group.conversationId
+  ) {
+    button.classList.add("is-active");
+  }
+  avatar.className = "avatar";
+  setAvatar(avatar, group.name || "G");
+  copy.className = "user-copy";
+  name.textContent = group.name || "Nhóm chat";
+  const last = group.lastMessage;
+  preview.textContent = last
+    ? last.type === "image"
+      ? "Đã gửi ảnh"
+      : last.type === "voice"
+        ? "Tin thoại"
+        : last.body || "Tin nhắn mới"
+    : "Bắt đầu trò chuyện nhóm";
+  copy.append(name, preview);
+  button.append(avatar, copy);
+  if (group.unreadCount > 0) {
+    const badge = document.createElement("span");
+    badge.className = "unread-badge";
+    badge.textContent = String(group.unreadCount);
+    button.append(badge);
+  }
+  button.addEventListener("click", () => selectGroup(group));
+  return button;
 }
 
 function createConversationItem(conversation) {
@@ -776,12 +904,33 @@ function renderSidebar() {
     ...availableOnline.map(createOnlineUserItem)
   );
 
-  const totalVisible = state.conversations.length + availableOnline.length;
+  const publicItem = createPublicRoomItem();
+  elements.publicRoomList?.replaceChildren(
+    ...(publicItem ? [publicItem] : [])
+  );
+  elements.groupList?.replaceChildren(
+    ...state.groups.map(createGroupItem)
+  );
+
+  const totalVisible =
+    state.conversations.length +
+    availableOnline.length +
+    (state.publicRoom ? 1 : 0) +
+    state.groups.length;
   elements.onlineCount.textContent = String(state.onlineUsers.length);
   elements.emptyUsers?.classList.toggle("is-hidden", totalVisible > 0);
 }
 
+function openChatPanel() {
+  elements.emptyState.classList.add("is-hidden");
+  elements.chatPanel.classList.remove("is-hidden");
+  elements.typingStatus.classList.add("is-hidden");
+  closeSidebar();
+}
+
 function selectConversation(conversation) {
+  state.chatMode = "direct";
+  state.activeConversation = null;
   state.selectedConversationId = conversation.conversationId;
   state.selectedUser = conversation.otherUser;
   state.unread.delete(conversation.otherUser.id);
@@ -789,20 +938,53 @@ function selectConversation(conversation) {
   hideSearchResults();
   if (elements.messageSearchInput) elements.messageSearchInput.value = "";
   clearSelectedFile();
-  elements.emptyState.classList.add("is-hidden");
-  elements.chatPanel.classList.remove("is-hidden");
-  elements.typingStatus.classList.add("is-hidden");
+  openChatPanel();
   const isOnline = state.onlineUsers.some(
     (user) => user.id === conversation.otherUser.id
   );
   renderConversationHeader(conversation.otherUser, isOnline);
   clearMessages();
   renderSidebar();
-  closeSidebar();
+  loadMessages({ reset: true });
+}
+
+function selectPublicRoom() {
+  if (!state.publicRoom) return;
+  state.chatMode = "public";
+  state.selectedUser = null;
+  state.activeConversation = state.publicRoom;
+  state.selectedConversationId = state.publicRoom.id;
+  clearSelectedFile();
+  hideSearchResults();
+  openChatPanel();
+  renderConversationHeader();
+  clearMessages();
+  renderSidebar();
+  socket.emit("join_conversation", {
+    conversationId: state.selectedConversationId
+  });
+  loadMessages({ reset: true });
+}
+
+function selectGroup(group) {
+  state.chatMode = "group";
+  state.selectedUser = null;
+  state.activeConversation = group;
+  state.selectedConversationId = group.conversationId;
+  clearSelectedFile();
+  hideSearchResults();
+  openChatPanel();
+  renderConversationHeader();
+  clearMessages();
+  renderSidebar();
+  socket.emit("join_conversation", {
+    conversationId: state.selectedConversationId
+  });
   loadMessages({ reset: true });
 }
 
 function startChatWithOnlineUser(user) {
+  switchSidebarTab("direct");
   const existing = state.conversations.find(
     (item) => item.otherUser.id === user.id
   );
@@ -811,15 +993,15 @@ function startChatWithOnlineUser(user) {
     return;
   }
 
+  state.chatMode = "direct";
+  state.activeConversation = null;
   state.selectedConversationId = null;
   state.selectedUser = user;
   clearSelectedFile();
-  elements.emptyState.classList.add("is-hidden");
-  elements.chatPanel.classList.remove("is-hidden");
+  openChatPanel();
   renderConversationHeader(user, true);
   clearMessages();
   renderSidebar();
-  closeSidebar();
   elements.messageInput.focus();
 }
 
@@ -873,6 +1055,28 @@ function loadConversations() {
   });
 }
 
+function loadPublicRoom() {
+  socket.emit("load_public_room", {}, (response) => {
+    if (!response?.ok) {
+      showToast(response?.error || "Không thể tải phòng chung.", "error");
+      return;
+    }
+    state.publicRoom = response.room;
+    renderSidebar();
+  });
+}
+
+function loadGroups() {
+  socket.emit("load_groups", {}, (response) => {
+    if (!response?.ok) {
+      showToast(response?.error || "Không thể tải nhóm.", "error");
+      return;
+    }
+    state.groups = response.groups || [];
+    renderSidebar();
+  });
+}
+
 function joinChat() {
   socket.emit("join_chat", {}, (response) => {
     if (!response?.ok) {
@@ -881,6 +1085,8 @@ function joinChat() {
     }
     state.currentUser = response.user;
     state.hasJoined = true;
+    state.currentUser = response.user;
+    state.publicRoom = response.publicRoom || null;
     elements.currentUsername.textContent =
       response.user.displayName || response.user.username;
     setAvatar(
@@ -889,13 +1095,47 @@ function joinChat() {
     );
     setConnectionVisible(false);
     loadConversations();
+    loadPublicRoom();
+    loadGroups();
   });
 }
 
-function emitPrivateMessage(payload) {
-  return new Promise((resolve) => {
-    socket.emit("private_message", payload, resolve);
-  });
+function handleIncomingRoomMessage(message, mode) {
+  const belongsToSelected =
+    state.selectedConversationId &&
+    message.conversationId === state.selectedConversationId &&
+    state.chatMode === mode;
+
+  if (belongsToSelected) {
+    appendMessage(message);
+    socket.emit("mark_read", {
+      conversationId: message.conversationId,
+      messageId: message.id
+    });
+    return;
+  }
+
+  if (message.senderId !== state.currentUser?.id) {
+    if (mode === "public") loadPublicRoom();
+    else loadGroups();
+    const preview =
+      message.type === "image"
+        ? "một ảnh"
+        : message.type === "voice"
+          ? "một tin thoại"
+          : message.type === "file"
+            ? "một file"
+            : "một tin nhắn";
+    const label =
+      mode === "public"
+        ? state.publicRoom?.name || "Phòng chung"
+        : "Nhóm chat";
+    showToast(`${message.senderName} vừa gửi ${preview} trong ${label}.`);
+  } else if (mode === "public") {
+    loadPublicRoom();
+  } else {
+    loadGroups();
+  }
 }
 
 function uploadFileWithProgress(file, extraFields = {}) {
@@ -950,10 +1190,42 @@ async function uploadSelectedFile(file, extraFields = {}) {
   return uploadFileWithProgress(file, extraFields);
 }
 
+function getMessageSocketEvent() {
+  if (state.chatMode === "public") return "public_message";
+  if (state.chatMode === "group") return "group_message";
+  return "private_message";
+}
+
+async function sendCurrentMessage(payload) {
+  const eventName = getMessageSocketEvent();
+  const body = { ...payload };
+
+  if (state.chatMode === "direct") {
+    body.receiverId = state.selectedUser.id;
+    body.conversationId = state.selectedConversationId;
+  } else {
+    body.conversationId = state.selectedConversationId;
+  }
+
+  const response = await emitSocketAck(eventName, body);
+  if (!response?.ok) {
+    throw new Error(response?.error || "Không thể gửi tin nhắn.");
+  }
+
+  if (state.chatMode === "direct" && response.message?.conversationId) {
+    state.selectedConversationId = response.message.conversationId;
+    loadConversations();
+  } else if (state.chatMode === "public") {
+    loadPublicRoom();
+  } else if (state.chatMode === "group") {
+    loadGroups();
+  }
+
+  return response;
+}
+
 async function sendFileMessage(fileMeta) {
-  const response = await emitPrivateMessage({
-    receiverId: state.selectedUser.id,
-    conversationId: state.selectedConversationId,
+  await sendCurrentMessage({
     type: fileMeta.kind,
     fileUrl: fileMeta.fileUrl,
     fileKey: fileMeta.fileKey,
@@ -963,27 +1235,15 @@ async function sendFileMessage(fileMeta) {
     durationMs: fileMeta.durationMs || null,
     replyToMessageId: state.replyTo?.id || null
   });
-  if (!response?.ok) throw new Error(response?.error || "Không thể gửi file.");
-  if (response.message?.conversationId) {
-    state.selectedConversationId = response.message.conversationId;
-    loadConversations();
-  }
 }
 
 async function sendTextMessage(text) {
-  const response = await emitPrivateMessage({
-    receiverId: state.selectedUser.id,
-    conversationId: state.selectedConversationId,
+  await sendCurrentMessage({
     type: "text",
     message: text,
     replyToMessageId: state.replyTo?.id || null
   });
-  if (!response?.ok) throw new Error(response?.error || "Không thể gửi tin nhắn.");
   clearReplyTarget();
-  if (response.message?.conversationId) {
-    state.selectedConversationId = response.message.conversationId;
-    loadConversations();
-  }
 }
 
 function updateRecordingTimer() {
@@ -1092,10 +1352,7 @@ async function sendVoiceRecording() {
 
   state.isUploading = true;
   setComposerDisabled(true);
-  const isOnline = state.onlineUsers.some(
-    (user) => user.id === state.selectedUser.id
-  );
-  renderConversationHeader(state.selectedUser, isOnline);
+  renderConversationHeader();
 
   try {
     const fileMeta = await uploadSelectedFile(file, {
@@ -1108,17 +1365,21 @@ async function sendVoiceRecording() {
     showToast(error.message, "error");
   } finally {
     state.isUploading = false;
-    renderConversationHeader(
-      state.selectedUser,
-      state.onlineUsers.some((user) => user.id === state.selectedUser.id)
-    );
+    renderConversationHeader();
     setComposerDisabled(false);
   }
 }
 
 async function handleMessageSubmit() {
-  if (!state.selectedUser) {
+  if (state.chatMode === "direct" && !state.selectedUser) {
     showToast("Vui lòng chọn người để chat.", "error");
+    return;
+  }
+  if (
+    (state.chatMode === "public" || state.chatMode === "group") &&
+    !state.selectedConversationId
+  ) {
+    showToast("Vui lòng chọn phòng hoặc nhóm để chat.", "error");
     return;
   }
 
@@ -1126,7 +1387,12 @@ async function handleMessageSubmit() {
   const file = state.selectedFile;
   if (!file && !text) return;
 
-  if (state.isTyping && state.selectedConversationId) {
+  if (
+    state.chatMode === "direct" &&
+    state.isTyping &&
+    state.selectedConversationId &&
+    state.selectedUser
+  ) {
     state.isTyping = false;
     socket.emit("stop_typing", {
       conversationId: state.selectedConversationId,
@@ -1136,9 +1402,10 @@ async function handleMessageSubmit() {
 
   state.isUploading = Boolean(file);
   setComposerDisabled(true);
-  const isOnline = state.onlineUsers.some(
-    (user) => user.id === state.selectedUser.id
-  );
+  const isOnline =
+    state.chatMode === "direct" && state.selectedUser
+      ? state.onlineUsers.some((user) => user.id === state.selectedUser.id)
+      : true;
   renderConversationHeader(state.selectedUser, isOnline);
 
   try {
@@ -1157,12 +1424,20 @@ async function handleMessageSubmit() {
     showToast(error.message, "error");
   } finally {
     state.isUploading = false;
-    renderConversationHeader(
-      state.selectedUser,
-      state.onlineUsers.some((user) => user.id === state.selectedUser.id)
-    );
+    renderConversationHeader();
     setComposerDisabled(false);
   }
+}
+
+function openGroupModal() {
+  elements.groupError.textContent = "";
+  elements.groupNameInput.value = "";
+  elements.groupMembersInput.value = "";
+  elements.groupModal?.classList.remove("is-hidden");
+}
+
+function closeGroupModal() {
+  elements.groupModal?.classList.add("is-hidden");
 }
 
 function switchAuthTab(tab) {
@@ -1394,8 +1669,61 @@ if (page === "chat") {
   elements.cancelRecordingButton?.addEventListener("click", cancelRecording);
   elements.sendRecordingButton?.addEventListener("click", sendVoiceRecording);
 
+  elements.tabDirect?.addEventListener("click", () => switchSidebarTab("direct"));
+  elements.tabOnline?.addEventListener("click", () => switchSidebarTab("online"));
+  elements.tabPublic?.addEventListener("click", () => switchSidebarTab("public"));
+  elements.tabGroups?.addEventListener("click", () => switchSidebarTab("groups"));
+  elements.createGroupButton?.addEventListener("click", openGroupModal);
+  elements.groupCloseButton?.addEventListener("click", closeGroupModal);
+  elements.groupModal?.addEventListener("click", (event) => {
+    if (event.target === elements.groupModal) closeGroupModal();
+  });
+  elements.groupForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    elements.groupError.textContent = "";
+    const name = elements.groupNameInput.value.trim();
+    const memberNames = elements.groupMembersInput.value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const memberIds = [];
+    for (const memberName of memberNames) {
+      const found = state.onlineUsers.find(
+        (user) =>
+          user.username === memberName ||
+          user.displayName === memberName
+      );
+      if (found) memberIds.push(found.id);
+    }
+    try {
+      const result = await api("/api/conversations/groups", {
+        method: "POST",
+        body: JSON.stringify({ name, memberIds })
+      });
+      closeGroupModal();
+      loadGroups();
+      switchSidebarTab("groups");
+      if (result.group) {
+        selectGroup({
+          conversationId: result.group.id,
+          name: result.group.name,
+          unreadCount: 0
+        });
+      }
+      showToast("Đã tạo nhóm.", "success");
+    } catch (error) {
+      elements.groupError.textContent = error.message;
+    }
+  });
+
   elements.messageInput.addEventListener("input", () => {
-    if (!state.selectedUser || !state.selectedConversationId) return;
+    if (
+      state.chatMode !== "direct" ||
+      !state.selectedUser ||
+      !state.selectedConversationId
+    ) {
+      return;
+    }
     if (!state.isTyping && elements.messageInput.value.trim()) {
       state.isTyping = true;
       socket.emit("typing", {
@@ -1522,8 +1850,17 @@ if (page === "chat") {
     }
   });
 
+  socket.on("public_message", (message) => {
+    handleIncomingRoomMessage(message, "public");
+  });
+
+  socket.on("group_message", (message) => {
+    handleIncomingRoomMessage(message, "group");
+  });
+
   socket.on("private_message", (message) => {
     const belongsToSelected =
+      state.chatMode === "direct" &&
       state.selectedConversationId &&
       message.conversationId === state.selectedConversationId;
 

@@ -5,6 +5,7 @@ const conversationRepository = require("../repositories/conversation.repository"
 const messageRepository = require("../repositories/message.repository");
 const userRepository = require("../repositories/user.repository");
 const messageService = require("../services/message.service");
+const conversationMessageService = require("../services/conversation-message.service");
 const realtimeService = require("../services/realtime.service");
 const { sanitizeMessage } = require("../utils/sanitize");
 
@@ -34,9 +35,20 @@ function registerSocketController(io) {
     socket.join(`user:${user.id}`);
     emitOnlineUsers(io);
 
-    socket.on("join_chat", (_payload, callback) => {
-      reply(callback, { ok: true, user });
-      emitOnlineUsers(io);
+    socket.on("join_chat", async (_payload, callback) => {
+      try {
+        const publicRoom = await conversationRepository.ensurePublicParticipant(
+          user.id
+        );
+        socket.join(`conversation:${publicRoom.id}`);
+        reply(callback, { ok: true, user, publicRoom });
+        emitOnlineUsers(io);
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể tham gia phòng chat."
+        });
+      }
     });
 
     socket.on("load_conversations", async (_payload, callback) => {
@@ -63,7 +75,17 @@ function registerSocketController(io) {
           return;
         }
 
-        const allowed = await conversationRepository.isParticipant(
+        const conversation = await conversationRepository.getById(conversationId);
+        if (!conversation) {
+          reply(callback, {
+            ok: false,
+            error: "Hội thoại không tồn tại.",
+            messages: []
+          });
+          return;
+        }
+
+        const allowed = await conversationRepository.canAccessConversation(
           conversationId,
           user.id
         );
@@ -76,10 +98,14 @@ function registerSocketController(io) {
           return;
         }
 
-        const otherUser = await conversationRepository.getOtherParticipant(
-          conversationId,
-          user.id
-        );
+        const otherUser =
+          conversation.type === "direct"
+            ? await conversationRepository.getOtherParticipant(
+                conversationId,
+                user.id
+              )
+            : null;
+
         const result = await messageModel.getMessagesForConversation({
           conversationId,
           limit: payload.limit,
@@ -97,6 +123,7 @@ function registerSocketController(io) {
           nextCursor: result.nextCursor,
           hasMore: result.hasMore,
           conversationId,
+          conversation,
           otherUser
         });
       } catch (error) {
@@ -106,6 +133,103 @@ function registerSocketController(io) {
           messages: []
         });
       }
+    });
+
+    socket.on("load_public_room", async (_payload, callback) => {
+      try {
+        const room = await conversationRepository.getPublicRoomForUser(user.id);
+        reply(callback, { ok: true, room });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể tải phòng public."
+        });
+      }
+    });
+
+    socket.on("load_groups", async (_payload, callback) => {
+      try {
+        const groups = await conversationRepository.listGroupsForUser(user.id);
+        reply(callback, { ok: true, groups });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể tải danh sách nhóm."
+        });
+      }
+    });
+
+    socket.on("join_conversation", async (payload = {}, callback) => {
+      try {
+        const { conversationId } = payload;
+        if (!conversationId) {
+          reply(callback, { ok: false, error: "Thiếu conversationId." });
+          return;
+        }
+
+        const allowed = await conversationRepository.canAccessConversation(
+          conversationId,
+          user.id
+        );
+        if (!allowed) {
+          reply(callback, { ok: false, error: "Không có quyền tham gia hội thoại." });
+          return;
+        }
+
+        socket.join(`conversation:${conversationId}`);
+        const conversation = await conversationRepository.getById(conversationId);
+        reply(callback, { ok: true, conversation });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể tham gia hội thoại."
+        });
+      }
+    });
+
+    socket.on("leave_conversation", (payload = {}) => {
+      if (payload.conversationId) {
+        socket.leave(`conversation:${payload.conversationId}`);
+      }
+    });
+
+    async function handleRoomMessage(expectedType, eventName, payload, callback) {
+      try {
+        const conversationId = payload.conversationId;
+        if (!conversationId) {
+          reply(callback, { ok: false, error: "Thiếu conversationId." });
+          return;
+        }
+
+        const result = await conversationMessageService.sendRoomMessage({
+          user,
+          conversationId,
+          payload,
+          expectedType
+        });
+
+        const outbound = result.message;
+        if (expectedType === "public") {
+          io.to(`conversation:${conversationId}`).emit(eventName, outbound);
+        } else {
+          await realtimeService.emitToConversation(conversationId, eventName, outbound);
+        }
+
+        reply(callback, { ok: true, message: outbound });
+      } catch (error) {
+        reply(callback, {
+          ok: false,
+          error: error.message || "Không thể gửi tin nhắn."
+        });
+      }
+    }
+
+    socket.on("public_message", (payload, callback) => {
+      handleRoomMessage("public", "public_message", payload, callback);
+    });
+
+    socket.on("group_message", (payload, callback) => {
+      handleRoomMessage("group", "group_message", payload, callback);
     });
 
     socket.on("private_message", async (payload = {}, callback) => {
@@ -463,7 +587,7 @@ function registerSocketController(io) {
           return;
         }
 
-        const allowed = await conversationRepository.isParticipant(
+        const allowed = await conversationRepository.canAccessConversation(
           conversationId,
           user.id
         );

@@ -39,17 +39,42 @@
         <div class="sidebar-heading">
           <div>
             <span class="sidebar-kicker">ĐANG HOẠT ĐỘNG</span>
-            <h2>Hội thoại</h2>
+            <h2>Chat</h2>
           </div>
           <span class="online-count" id="onlineCount">0</span>
         </div>
-        <div class="sidebar-section">
-          <p class="sidebar-section-title">Hội thoại của bạn</p>
-          <div class="user-list" id="conversationList"></div>
+        <div class="sidebar-tabs" role="tablist">
+          <button class="sidebar-tab is-active" id="tabDirect" type="button" data-tab="direct">Hội thoại</button>
+          <button class="sidebar-tab" id="tabOnline" type="button" data-tab="online">Online</button>
+          <button class="sidebar-tab" id="tabPublic" type="button" data-tab="public">Phòng chung</button>
+          <button class="sidebar-tab" id="tabGroups" type="button" data-tab="groups">Nhóm</button>
         </div>
-        <div class="sidebar-section">
-          <p class="sidebar-section-title">Đang online</p>
-          <div class="user-list" id="userList"></div>
+        <div class="sidebar-panel" id="panelDirect">
+          <div class="sidebar-section">
+            <p class="sidebar-section-title">Hội thoại của bạn</p>
+            <div class="user-list" id="conversationList"></div>
+          </div>
+        </div>
+        <div class="sidebar-panel is-hidden" id="panelOnline">
+          <div class="sidebar-section">
+            <p class="sidebar-section-title">Đang online</p>
+            <div class="user-list" id="userList"></div>
+          </div>
+        </div>
+        <div class="sidebar-panel is-hidden" id="panelPublic">
+          <div class="sidebar-section">
+            <p class="sidebar-section-title">Phòng công khai</p>
+            <div class="user-list" id="publicRoomList"></div>
+          </div>
+        </div>
+        <div class="sidebar-panel is-hidden" id="panelGroups">
+          <div class="sidebar-section">
+            <div class="sidebar-section-head">
+              <p class="sidebar-section-title">Nhóm của bạn</p>
+              <button class="create-group-button" id="createGroupButton" type="button">+ Tạo nhóm</button>
+            </div>
+            <div class="user-list" id="groupList"></div>
+          </div>
         </div>
         <div class="empty-users is-hidden" id="emptyUsers">
           <span aria-hidden="true">
@@ -90,7 +115,7 @@
               <input id="messageSearchInput" type="search" placeholder="Tìm tin nhắn..." maxlength="120" aria-label="Tìm tin nhắn">
               <button id="messageSearchButton" type="button">Tìm</button>
             </div>
-            <span class="private-chip">Cuộc trò chuyện riêng</span>
+            <span class="private-chip" id="conversationTypeChip">Cuộc trò chuyện riêng</span>
           </header>
 
           <div class="search-results is-hidden" id="searchResults"></div>
@@ -187,6 +212,23 @@
         <input id="profileConfirmPassword" name="confirmPassword" type="password" autocomplete="new-password">
         <p class="form-error" id="profileError" role="alert"></p>
         <button class="home-join-button" id="profileSaveButton" type="submit">Lưu hồ sơ</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="group-modal is-hidden" id="groupModal" role="dialog" aria-modal="true">
+    <div class="group-modal-card">
+      <div class="profile-modal-header">
+        <h2>Tạo nhóm mới</h2>
+        <button class="profile-close-button" id="groupCloseButton" type="button" aria-label="Đóng">×</button>
+      </div>
+      <form id="groupForm" class="profile-form" novalidate>
+        <label for="groupNameInput">Tên nhóm</label>
+        <input id="groupNameInput" name="name" type="text" maxlength="80" required>
+        <label for="groupMembersInput">Thêm thành viên (username, cách nhau bởi dấu phẩy)</label>
+        <input id="groupMembersInput" name="members" type="text" placeholder="user1, user2">
+        <p class="form-error" id="groupError" role="alert"></p>
+        <button class="home-join-button" type="submit">Tạo nhóm</button>
       </form>
     </div>
   </div>
