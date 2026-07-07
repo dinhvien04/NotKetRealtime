@@ -10,6 +10,7 @@ const userRoutes = require("./routes/user.routes");
 const messageRoutes = require("./routes/message.routes");
 const conversationRoutes = require("./routes/conversation.routes");
 const adminRoutes = require("./routes/admin.routes");
+const healthRoutes = require("./routes/health.routes");
 const csrfRoutes = require("./routes/csrf.routes");
 
 const app = express();
@@ -33,6 +34,7 @@ app.use(cookieParser());
 app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: false, limit: "16kb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
+app.use("/health", healthRoutes);
 app.use("/api", csrfRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);

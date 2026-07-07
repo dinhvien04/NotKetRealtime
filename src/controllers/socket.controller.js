@@ -1,4 +1,4 @@
-const presenceModel = require("../models/presence.model");
+const presenceService = require("../services/presence.service");
 const messageModel = require("../models/message.model");
 const uploadModel = require("../models/upload.model");
 const conversationRepository = require("../repositories/conversation.repository");
@@ -9,8 +9,9 @@ const conversationMessageService = require("../services/conversation-message.ser
 const realtimeService = require("../services/realtime.service");
 const { sanitizeMessage } = require("../utils/sanitize");
 
-function emitOnlineUsers(io) {
-  io.emit("online_users", presenceModel.getAllOnline());
+async function emitOnlineUsers(io) {
+  const users = await presenceService.getAllOnline();
+  io.emit("online_users", users);
 }
 
 function reply(callback, payload) {
@@ -24,16 +25,16 @@ function getSocketUser(socket) {
 }
 
 function registerSocketController(io) {
-  io.on("connection", (socket) => {
+  io.on("connection", async (socket) => {
     const user = getSocketUser(socket);
     if (!user) {
       socket.disconnect(true);
       return;
     }
 
-    presenceModel.addPresence(socket.id, user);
+    await presenceService.addPresence(socket.id, user);
     socket.join(`user:${user.id}`);
-    emitOnlineUsers(io);
+    await emitOnlineUsers(io);
 
     socket.on("join_chat", async (_payload, callback) => {
       try {
@@ -42,7 +43,7 @@ function registerSocketController(io) {
         );
         socket.join(`conversation:${publicRoom.id}`);
         reply(callback, { ok: true, user, publicRoom });
-        emitOnlineUsers(io);
+        await emitOnlineUsers(io);
       } catch (error) {
         reply(callback, {
           ok: false,
@@ -637,11 +638,11 @@ function registerSocketController(io) {
       }
     });
 
-    socket.on("disconnect", () => {
-      const removedUser = presenceModel.removePresence(socket.id);
+    socket.on("disconnect", async () => {
+      const removedUser = await presenceService.removePresence(socket.id);
       if (!removedUser) return;
       io.emit("user_offline", removedUser);
-      emitOnlineUsers(io);
+      await emitOnlineUsers(io);
     });
   });
 }

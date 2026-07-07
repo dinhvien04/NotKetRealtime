@@ -5,6 +5,9 @@ const authService = require("./src/services/auth.service");
 const app = require("./src/app");
 const registerSocketController = require("./src/controllers/socket.controller");
 const realtimeService = require("./src/services/realtime.service");
+const redisService = require("./src/services/redis.service");
+const { closePool } = require("./src/db");
+const logger = require("./src/utils/logger");
 const { socketAuthMiddleware } = require("./src/middlewares/socket-auth.middleware");
 const {
   socketOriginMiddleware,
@@ -26,10 +29,49 @@ registerSocketController(io);
 
 const authConfigError = authService.getAuthConfigError();
 if (authConfigError) {
-  console.error(authConfigError);
+  logger.error(authConfigError);
   process.exit(1);
 }
 
-httpServer.listen(config.port, () => {
-  console.log(`Nối Kết Realtime đang chạy tại http://localhost:${config.port}`);
-});
+let isShuttingDown = false;
+
+async function start() {
+  try {
+    await redisService.connect();
+    await redisService.attachSocketAdapter(io);
+
+    httpServer.listen(config.port, () => {
+      logger.info("Server started", {
+        port: config.port,
+        redis: redisService.isEnabled(),
+        env: config.nodeEnv
+      });
+    });
+  } catch (error) {
+    logger.error("Không thể khởi động server", { error: error.message });
+    process.exit(1);
+  }
+}
+
+async function shutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  logger.info("Shutting down", { signal });
+
+  await new Promise((resolve) => {
+    io.close(() => resolve());
+  });
+
+  await new Promise((resolve) => {
+    httpServer.close(() => resolve());
+  });
+
+  await redisService.close();
+  await closePool();
+  process.exit(0);
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+start();

@@ -8,8 +8,8 @@
     "dev": "node --watch server.js",
     "db:migrate": "node src/db/migrate.js",
     "db:status": "node src/db/migrate.js --status",
-    "check": "node --check server.js && node --check src/app.js && node --check src/config/env.js && node --check src/db/migrate.js && node --check src/middlewares/csrf.middleware.js && node --check src/middlewares/role.middleware.js && node --check src/middlewares/socket-origin.middleware.js && node --check src/middlewares/avatar.middleware.js && node --check src/routes/csrf.routes.js && node --check src/routes/user.routes.js && node --check src/routes/message.routes.js && node --check src/routes/conversation.routes.js && node --check src/routes/admin.routes.js && node --check src/controllers/socket.controller.js && node --check src/controllers/auth.controller.js && node --check src/controllers/user.controller.js && node --check src/controllers/message.controller.js && node --check src/controllers/conversation.controller.js && node --check src/controllers/admin.controller.js && node --check src/controllers/upload.controller.js && node --check src/services/auth.service.js && node --check src/services/profile.service.js && node --check src/services/password-reset.service.js && node --check src/services/message.service.js && node --check src/services/conversation.service.js && node --check src/services/conversation-message.service.js && node --check src/services/bad-word.service.js && node --check src/services/admin.service.js && node --check src/services/realtime.service.js && node --check src/services/mailer.service.js && node --check src/services/audit.service.js && node --check src/services/storage.service.js && node --check src/utils/file-magic.js && node --check src/utils/emoji.js && node --check src/utils/bad-word.js && node --check public/js/client.js && node --check public/js/admin.js",
-    "test": "node tests/auth.service.test.js && node tests/password-reset.service.test.js && node tests/csrf.api.test.js && node tests/file-validation.test.js && node tests/voice-validation.test.js && node tests/bad-word.test.js && node tests/auth.api.test.js && node tests/profile.api.test.js && node tests/password-reset.api.test.js && node tests/messages.api.test.js && node tests/conversations.api.test.js && node tests/admin.api.test.js && node tests/socket.integration.test.js"
+    "check": "node --check server.js && node --check src/app.js && node --check src/config/env.js && node --check src/db/migrate.js && node --check src/middlewares/csrf.middleware.js && node --check src/middlewares/role.middleware.js && node --check src/middlewares/socket-origin.middleware.js && node --check src/middlewares/avatar.middleware.js && node --check src/routes/csrf.routes.js && node --check src/routes/health.routes.js && node --check src/routes/user.routes.js && node --check src/routes/message.routes.js && node --check src/routes/conversation.routes.js && node --check src/routes/admin.routes.js && node --check src/controllers/socket.controller.js && node --check src/controllers/auth.controller.js && node --check src/controllers/user.controller.js && node --check src/controllers/message.controller.js && node --check src/controllers/conversation.controller.js && node --check src/controllers/admin.controller.js && node --check src/controllers/health.controller.js && node --check src/controllers/upload.controller.js && node --check src/services/auth.service.js && node --check src/services/profile.service.js && node --check src/services/password-reset.service.js && node --check src/services/message.service.js && node --check src/services/conversation.service.js && node --check src/services/conversation-message.service.js && node --check src/services/bad-word.service.js && node --check src/services/admin.service.js && node --check src/services/redis.service.js && node --check src/services/presence.service.js && node --check src/services/realtime.service.js && node --check src/services/mailer.service.js && node --check src/services/audit.service.js && node --check src/services/storage.service.js && node --check src/utils/file-magic.js && node --check src/utils/emoji.js && node --check src/utils/bad-word.js && node --check src/utils/logger.js && node --check public/js/client.js && node --check public/js/admin.js",
+    "test": "node tests/auth.service.test.js && node tests/password-reset.service.test.js && node tests/csrf.api.test.js && node tests/file-validation.test.js && node tests/voice-validation.test.js && node tests/bad-word.test.js && node tests/logger.test.js && node tests/health.api.test.js && node tests/auth.api.test.js && node tests/profile.api.test.js && node tests/password-reset.api.test.js && node tests/messages.api.test.js && node tests/conversations.api.test.js && node tests/admin.api.test.js && node tests/socket.integration.test.js"
   },
   "keywords": [
     "chat",
@@ -19,6 +19,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
     "@supabase/supabase-js": "^2.109.0",
     "argon2": "^0.44.0",
     "cookie-parser": "^1.4.7",
@@ -31,6 +32,7 @@
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",
     "pg": "^8.22.0",
+    "redis": "^6.1.0",
     "socket.io": "^4.8.1",
     "uuid": "^14.0.1"
   },

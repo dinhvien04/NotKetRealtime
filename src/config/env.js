@@ -127,5 +127,24 @@ module.exports = {
   get messageEditWindowMinutes() {
     const value = Number(process.env.MESSAGE_EDIT_WINDOW_MINUTES) || 15;
     return Number.isFinite(value) ? value : 15;
+  },
+  get redisUrl() {
+    return process.env.REDIS_URL || "";
+  },
+  get logLevel() {
+    const level = String(process.env.LOG_LEVEL || "info").toLowerCase();
+    return ["debug", "info", "warn", "error"].includes(level) ? level : "info";
+  },
+  get dbPoolMax() {
+    const value = Number(process.env.DB_POOL_MAX) || 10;
+    return Number.isFinite(value) ? value : 10;
+  },
+  get dbStatementTimeoutMs() {
+    const value = Number(process.env.DB_STATEMENT_TIMEOUT_MS) || 10000;
+    return Number.isFinite(value) ? value : 10000;
+  },
+  get presenceTtlSeconds() {
+    const value = Number(process.env.PRESENCE_TTL_SECONDS) || 300;
+    return Number.isFinite(value) ? value : 300;
   }
 };

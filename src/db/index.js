@@ -22,9 +22,10 @@ function getPool() {
       ssl: config.databaseUrl.includes("localhost")
         ? false
         : { rejectUnauthorized: false },
-      max: 10,
+      max: config.dbPoolMax,
       connectionTimeoutMillis: 10000,
-      idleTimeoutMillis: 10000
+      idleTimeoutMillis: 10000,
+      statement_timeout: config.dbStatementTimeoutMs
     });
   }
 
