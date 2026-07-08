@@ -16,6 +16,35 @@ const csrfRoutes = require("./routes/csrf.routes");
 const requestLoggingMiddleware = require("./middlewares/request-logging.middleware");
 const { requireSameOriginFetch } = require("./middlewares/sec-fetch.middleware");
 
+function getOrigin(value) {
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getS3ConnectSrc() {
+  const sources = new Set();
+
+  const publicBaseOrigin = getOrigin(config.s3PublicBaseUrl);
+  if (publicBaseOrigin) {
+    sources.add(publicBaseOrigin);
+  }
+
+  const endpointOrigin = getOrigin(config.s3Endpoint);
+  if (endpointOrigin) {
+    sources.add(endpointOrigin);
+  }
+
+  if (!config.s3Endpoint && config.s3Bucket && config.s3Region && config.s3Region !== "auto") {
+    sources.add(`https://${config.s3Bucket}.s3.${config.s3Region}.amazonaws.com`);
+  }
+
+  return [...sources];
+}
+
 const app = express();
 
 app.disable("x-powered-by");
@@ -27,7 +56,7 @@ app.use(
         defaultSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "https:"],
         scriptSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: ["'self'", "ws:", "wss:"],
+        connectSrc: ["'self'", "ws:", "wss:", ...getS3ConnectSrc()],
         styleSrc: ["'self'", "'unsafe-inline'"]
       }
     }
