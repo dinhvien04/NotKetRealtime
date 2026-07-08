@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS attachments (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   message_id uuid REFERENCES messages(id) ON DELETE SET NULL,
   uploader_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  storage_provider varchar(30) NOT NULL DEFAULT 'supabase',
+  storage_provider varchar(30) NOT NULL DEFAULT 's3',
   bucket text NOT NULL,
   file_key text NOT NULL UNIQUE,
   file_url text,

@@ -15,6 +15,9 @@ function buildHmacMessage({ sub, sid, raw }) {
 function signToken(raw, session = {}) {
   const secret = getCsrfSecret();
   if (!secret) {
+    if (config.isProduction) {
+      throw new Error("CSRF_SECRET (or JWT_SECRET) is required for CSRF in production");
+    }
     return raw;
   }
 
@@ -42,8 +45,16 @@ function verifyCsrfToken(token, session = {}) {
 
   const secret = getCsrfSecret();
   const dotIndex = token.lastIndexOf(".");
-  if (!secret || dotIndex === -1) {
-    return token.length >= 32;
+  if (!secret) {
+    if (config.isProduction) {
+      return false;
+    }
+    // dev only: allow raw unsigned token
+    return dotIndex === -1 && token.length >= 32;
+  }
+
+  if (dotIndex === -1) {
+    return false;
   }
 
   const raw = token.slice(0, dotIndex);

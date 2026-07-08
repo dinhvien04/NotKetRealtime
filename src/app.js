@@ -26,6 +26,17 @@ function getOrigin(value) {
   }
 }
 
+function getWsOrigin(value) {
+  if (!value) return null;
+  try {
+    const u = new URL(value);
+    const proto = u.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${u.host}`;
+  } catch (_error) {
+    return null;
+  }
+}
+
 function getS3ConnectSrc() {
   const sources = new Set();
 
@@ -46,6 +57,48 @@ function getS3ConnectSrc() {
   return [...sources];
 }
 
+function buildConnectSrc() {
+  const sources = new Set(["'self'"]);
+
+  // CLIENT_ORIGIN(s)
+  for (const origin of config.clientOrigins || []) {
+    const httpOrigin = getOrigin(origin);
+    if (httpOrigin) sources.add(httpOrigin);
+    const wsOrigin = getWsOrigin(origin);
+    if (wsOrigin) sources.add(wsOrigin);
+  }
+
+  // APP_BASE_URL
+  const appOrigin = getOrigin(config.appBaseUrl);
+  if (appOrigin) {
+    sources.add(appOrigin);
+  }
+  const appWs = getWsOrigin(config.appBaseUrl);
+  if (appWs) sources.add(appWs);
+
+  // S3 / public / endpoint
+  getS3ConnectSrc().forEach((s) => sources.add(s));
+
+  // Iconify APIs
+  sources.add("https://api.iconify.design");
+  sources.add("https://api.simplesvg.com");
+  sources.add("https://api.unisvg.com");
+
+  if (!config.isProduction) {
+    // Dev: allow generic for easy local ws + localhost variants
+    sources.add("ws:");
+    sources.add("wss:");
+    sources.add("http://localhost:3000");
+    sources.add("http://127.0.0.1:3000");
+    sources.add("ws://localhost:3000");
+    sources.add("ws://127.0.0.1:3000");
+    sources.add("wss://localhost:3000");
+    sources.add("wss://127.0.0.1:3000");
+  }
+
+  return [...sources];
+}
+
 const app = express();
 
 app.disable("x-powered-by");
@@ -57,15 +110,7 @@ app.use(
         defaultSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "https:"],
         scriptSrc: ["'self'", "'unsafe-inline'", "https://code.iconify.design"],
-        connectSrc: [
-          "'self'",
-          "ws:",
-          "wss:",
-          "https://api.iconify.design",
-          "https://api.simplesvg.com",
-          "https://api.unisvg.com",
-          ...getS3ConnectSrc()
-        ],
+        connectSrc: buildConnectSrc(),
         styleSrc: ["'self'", "'unsafe-inline'"]
       }
     }
