@@ -15,14 +15,14 @@ function getMaxUploadBytes() {
   return Number.isFinite(value) ? value : 6291456;
 }
 
-function parseSupabaseStoragePublic(raw) {
-  if (raw === undefined || raw === "") return false;
+function parseBooleanEnv(raw, fallback = false) {
+  if (raw === undefined || raw === "") return fallback;
   if (raw === "false" || raw === "0") return false;
   return raw === "true" || raw === "1";
 }
 
 module.exports = {
-  parseSupabaseStoragePublic,
+  parseBooleanEnv,
   get databaseUrl() {
     return process.env.DATABASE_URL || "";
   },
@@ -57,27 +57,43 @@ module.exports = {
   get csrfSecret() {
     return process.env.CSRF_SECRET || "";
   },
-  get supabaseUrl() {
-    return (
-      process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-    );
+  get storageProvider() {
+    return (process.env.STORAGE_PROVIDER || "s3").toLowerCase();
   },
-  get supabasePublishableKey() {
-    return (
-      process.env.SUPABASE_PUBLISHABLE_KEY ||
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-      ""
-    );
+  get s3Region() {
+    if (process.env.S3_REGION) {
+      return process.env.S3_REGION;
+    }
+    if (process.env.S3_ENDPOINT) {
+      return "auto";
+    }
+    return "ap-southeast-1";
   },
-  get supabaseServerKey() {
-    return (
-      process.env.SUPABASE_SECRET_KEY ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      ""
-    );
+  get s3Bucket() {
+    return process.env.S3_BUCKET || "";
   },
-  get supabaseStorageBucket() {
-    return process.env.SUPABASE_STORAGE_BUCKET || "chat-uploads";
+  get s3AccessKeyId() {
+    return process.env.S3_ACCESS_KEY_ID || "";
+  },
+  get s3SecretAccessKey() {
+    return process.env.S3_SECRET_ACCESS_KEY || "";
+  },
+  get s3Endpoint() {
+    return process.env.S3_ENDPOINT || "";
+  },
+  get s3ForcePathStyle() {
+    return parseBooleanEnv(process.env.S3_FORCE_PATH_STYLE, false);
+  },
+  get s3PublicBaseUrl() {
+    return process.env.S3_PUBLIC_BASE_URL || "";
+  },
+  get s3SignedUrlTtlSeconds() {
+    const value = Number(process.env.S3_SIGNED_URL_TTL_SECONDS) || 3600;
+    return Number.isFinite(value) ? value : 3600;
+  },
+  get s3PresignedUploadTtlSeconds() {
+    const value = Number(process.env.S3_PRESIGNED_UPLOAD_TTL_SECONDS) || 300;
+    return Number.isFinite(value) ? value : 300;
   },
   get maxUploadBytes() {
     return getMaxUploadBytes();
@@ -94,13 +110,7 @@ module.exports = {
     const value = Number(process.env.MAX_VOICE_SECONDS) || 120;
     return Number.isFinite(value) ? value : 120;
   },
-  get supabaseStoragePublic() {
-    return parseSupabaseStoragePublic(process.env.SUPABASE_STORAGE_PUBLIC);
-  },
-  get signedUrlTtlSeconds() {
-    const value = Number(process.env.SIGNED_URL_TTL_SECONDS) || 3600;
-    return Number.isFinite(value) ? value : 3600;
-  },
+
   get nodeEnv() {
     return process.env.NODE_ENV || "development";
   },
@@ -185,5 +195,31 @@ module.exports = {
   get presenceTtlSeconds() {
     const value = Number(process.env.PRESENCE_TTL_SECONDS) || 300;
     return Number.isFinite(value) ? value : 300;
+  },
+  get iconAllowedPrefixes() {
+    const raw = process.env.ICON_ALLOWED_PREFIXES || "lucide,mdi,material-symbols";
+    const prefixes = raw
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean);
+    return prefixes.length ? [...new Set(prefixes)] : ["lucide", "mdi", "material-symbols"];
+  },
+  get iconDefaultPrefix() {
+    const fallback = "lucide";
+    const value = String(process.env.ICON_DEFAULT_PREFIX || fallback)
+      .trim()
+      .toLowerCase();
+    return this.iconAllowedPrefixes.includes(value) ? value : fallback;
+  },
+  get iconMaxRecent() {
+    const value = Number(process.env.ICON_MAX_RECENT) || 30;
+    return Number.isFinite(value) ? Math.max(1, Math.min(value, 100)) : 30;
+  },
+  get iconMaxSearchResults() {
+    const value = Number(process.env.ICON_MAX_SEARCH_RESULTS) || 60;
+    return Number.isFinite(value) ? Math.max(1, Math.min(value, 100)) : 60;
+  },
+  get iconUseIconifyApi() {
+    return parseBooleanEnv(process.env.ICON_USE_ICONIFY_API, true);
   }
 };

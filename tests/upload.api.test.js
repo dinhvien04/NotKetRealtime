@@ -48,50 +48,89 @@ async function run() {
     const sessionCsrf = loginData.csrfToken;
     const cookie = mergeCookies(authCookie, `notket_csrf=${sessionCsrf}`);
 
-    const noCsrf = await fetch(`${baseUrl}/api/uploads`, {
+    const noCsrf = await fetch(`${baseUrl}/api/uploads/sign`, {
       method: "POST",
-      headers: { Cookie: cookie },
-      body: new FormData()
+      headers: { Cookie: cookie, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: "tiny.png",
+        mimeType: "image/png",
+        size: 68,
+        kind: "image"
+      })
     });
     assert.equal(noCsrf.status, 403);
 
-    const noAuth = await fetch(`${baseUrl}/api/uploads`, { method: "POST" });
+    const noAuth = await fetch(`${baseUrl}/api/uploads/sign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: "tiny.png",
+        mimeType: "image/png",
+        size: 68,
+        kind: "image"
+      })
+    });
     assert.equal(noAuth.status, 401);
 
-    const pngBuffer = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-      "base64"
-    );
-    const formData = new FormData();
-    formData.append(
-      "file",
-      new Blob([pngBuffer], { type: "image/png" }),
-      "tiny.png"
-    );
-
-    const uploadWithoutSocket = await fetch(`${baseUrl}/api/uploads`, {
+    const deprecated = await fetch(`${baseUrl}/api/uploads`, {
       method: "POST",
       headers: {
         Cookie: cookie,
         "X-CSRF-Token": sessionCsrf
       },
-      body: formData
+      body: new FormData()
     });
-    const uploadData = await uploadWithoutSocket.json();
-    assert.notEqual(uploadWithoutSocket.status, 401);
-    assert.notEqual(uploadWithoutSocket.status, 403);
-    const errorText = String(uploadData.error || "");
-    assert.ok(!/presence|offline|phải online|chưa kết nối/i.test(errorText));
+    assert.equal(deprecated.status, 410);
 
-    if (uploadWithoutSocket.status === 200) {
-      assert.equal(uploadData.ok, true);
-      assert.ok(uploadData.file?.fileKey);
+    const signResponse = await fetch(`${baseUrl}/api/uploads/sign`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+        "X-CSRF-Token": sessionCsrf
+      },
+      body: JSON.stringify({
+        fileName: "tiny.png",
+        mimeType: "image/png",
+        size: 68,
+        kind: "image"
+      })
+    });
+    const signData = await signResponse.json();
+    assert.notEqual(signResponse.status, 401);
+    assert.notEqual(signResponse.status, 403);
+
+    if (signResponse.status === 200) {
+      assert.equal(signData.ok, true);
+      assert.ok(signData.upload?.fileKey);
+      assert.equal(signData.upload.method, "PUT");
+      assert.ok(signData.upload.uploadUrl);
     } else {
-      assert.ok([400, 503].includes(uploadWithoutSocket.status));
+      assert.ok([400, 503].includes(signResponse.status));
+    }
+
+    const unsafe = await fetch(`${baseUrl}/api/uploads/sign`, {
+      method: "POST",
+      headers: {
+        Cookie: cookie,
+        "Content-Type": "application/json",
+        "X-CSRF-Token": sessionCsrf
+      },
+      body: JSON.stringify({
+        fileName: "evil.exe",
+        mimeType: "image/png",
+        size: 68,
+        kind: "image"
+      })
+    });
+    const unsafeData = await unsafe.json();
+    assert.equal(unsafe.ok ? unsafe.status : unsafe.status, unsafe.status);
+    if (unsafe.status !== 503) {
+      assert.equal(unsafeData.ok, false);
     }
 
     console.log(
-      "Đã kiểm tra: upload unauthorized + CSRF reject + upload không cần socket."
+      "Đã kiểm tra: upload sign auth/CSRF, deprecated route, metadata validation."
     );
   } finally {
     await new Promise((resolve) => server.close(resolve));

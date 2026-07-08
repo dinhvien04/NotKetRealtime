@@ -2,9 +2,13 @@ const config = require("../config/env");
 const uploadModel = require("../models/upload.model");
 const attachmentRepository = require("../repositories/attachment.repository");
 const auditService = require("../services/audit.service");
-const { getSupabaseError } = require("../services/supabase.service");
-const { uploadChatFile, resolveFileUrl } = require("../services/storage.service");
-const { getMaxBytesForKind } = require("../utils/mime");
+const { getStorageConfigError } = require("../services/s3.service");
+const {
+  createPresignedUpload,
+  resolveFileUrl
+} = require("../services/storage.service");
+const { isAllowedMimeType, getKindFromMimeType } = require("../utils/mime");
+
 function parseDurationMs(value) {
   const duration = Number(value);
   if (!Number.isFinite(duration) || duration <= 0) {
@@ -13,7 +17,7 @@ function parseDurationMs(value) {
   return Math.round(duration);
 }
 
-async function logUploadRejection(req, sender, reason) {
+async function logUploadRejection(req, sender, reason, details = {}) {
   try {
     await auditService.log({
       actorId: sender?.id || null,
@@ -22,8 +26,8 @@ async function logUploadRejection(req, sender, reason) {
       targetType: "file",
       details: {
         reason,
-        fileName: req.file?.originalname || null,
-        mimeType: req.file?.mimetype || null
+        fileName: details.fileName || null,
+        mimeType: details.mimeType || null
       },
       req
     });
@@ -32,8 +36,23 @@ async function logUploadRejection(req, sender, reason) {
   }
 }
 
-async function uploadFile(req, res) {
-  const configError = getSupabaseError();
+function parseSignBody(body = {}) {
+  const fileName =
+    typeof body.fileName === "string" ? body.fileName.trim() : "";
+  const mimeType =
+    typeof body.mimeType === "string" ? body.mimeType.trim() : "";
+  const size = Number(body.size);
+  const kind = typeof body.kind === "string" ? body.kind.trim() : null;
+  const durationMs =
+    body.durationMs === null || body.durationMs === undefined
+      ? null
+      : parseDurationMs(body.durationMs);
+
+  return { fileName, mimeType, size, kind, durationMs };
+}
+
+async function signUpload(req, res) {
+  const configError = getStorageConfigError();
   if (configError) {
     return res.status(503).json({ ok: false, error: configError });
   }
@@ -43,81 +62,102 @@ async function uploadFile(req, res) {
     return res.status(401).json({ ok: false, error: "Bạn cần đăng nhập." });
   }
 
-  if (!req.file) {
-    await logUploadRejection(req, sender, "Thiếu file upload.");
-    return res.status(400).json({ ok: false, error: "Thiếu file upload." });
+  const { fileName, mimeType, size, kind, durationMs } = parseSignBody(req.body);
+
+  if (!fileName || !mimeType || !Number.isFinite(size) || size <= 0) {
+    await logUploadRejection(req, sender, "Metadata upload không hợp lệ.", {
+      fileName,
+      mimeType
+    });
+    return res.status(400).json({
+      ok: false,
+      error: "Metadata upload không hợp lệ."
+    });
   }
 
-  const kind = typeof req.body?.kind === "string" ? req.body.kind.trim() : null;
-  const durationMs = parseDurationMs(req.body?.durationMs);
+  if (!isAllowedMimeType(mimeType)) {
+    await logUploadRejection(req, sender, "Loại file không được hỗ trợ.", {
+      fileName,
+      mimeType
+    });
+    return res.status(400).json({
+      ok: false,
+      error: "Loại file không được hỗ trợ."
+    });
+  }
 
-  if (kind === "voice") {
-    if (!durationMs) {
-      await logUploadRejection(req, sender, "Voice message cần durationMs hợp lệ.");
-      return res.status(400).json({
-        ok: false,
-        error: "Voice message cần durationMs hợp lệ."
-      });
-    }
-    const maxDurationMs = config.maxVoiceSeconds * 1000;
-    if (durationMs > maxDurationMs) {
-      await logUploadRejection(req, sender, `Voice message vượt quá ${config.maxVoiceSeconds} giây.`);
-      return res.status(400).json({
-        ok: false,
-        error: `Voice message vượt quá ${config.maxVoiceSeconds} giây.`
-      });
-    }
+  const resolvedKind = getKindFromMimeType(mimeType, kind);
+  if (kind && kind !== resolvedKind) {
+    await logUploadRejection(req, sender, "Kind không khớp MIME type.", {
+      fileName,
+      mimeType
+    });
+    return res.status(400).json({
+      ok: false,
+      error: "Kind không khớp MIME type."
+    });
   }
 
   try {
-    const fileMeta = await uploadChatFile({
-      buffer: req.file.buffer,
-      originalName: req.file.originalname,
-      mimeType: req.file.mimetype,
-      size: req.file.size,
+    const upload = await createPresignedUpload({
+      originalName: fileName,
+      mimeType,
+      size,
       senderId: sender.id,
-      kind
+      kind: resolvedKind,
+      durationMs
     });
 
-    if (req.file.size > getMaxBytesForKind(fileMeta.kind)) {
-      await logUploadRejection(req, sender, "File vượt quá giới hạn cho loại upload này.");
-      return res.status(400).json({
-        ok: false,
-        error: "File vượt quá giới hạn cho loại upload này."
-      });
-    }
-
     const pendingMeta = {
-      ...fileMeta,
-      durationMs: kind === "voice" ? durationMs : null
+      fileKey: upload.fileKey,
+      fileName: upload.fileName,
+      mimeType: upload.mimeType,
+      size: upload.size,
+      kind: upload.kind,
+      durationMs: upload.durationMs,
+      status: "signed",
+      expiresAt: new Date(
+        Date.now() + upload.expiresIn * 1000
+      ).toISOString()
     };
 
     await attachmentRepository.createPending({
       uploaderId: sender.id,
-      bucket: config.supabaseStorageBucket,
-      fileKey: fileMeta.fileKey,
-      fileUrl: config.supabaseStoragePublic ? fileMeta.fileUrl : null,
-      fileName: fileMeta.fileName,
-      mimeType: fileMeta.mimeType,
-      fileSize: fileMeta.size,
-      kind: fileMeta.kind,
-      durationMs: pendingMeta.durationMs
+      bucket: config.s3Bucket,
+      fileKey: upload.fileKey,
+      fileUrl: null,
+      fileName: upload.fileName,
+      mimeType: upload.mimeType,
+      fileSize: upload.size,
+      kind: upload.kind,
+      durationMs: upload.durationMs,
+      metadata: { status: "signed" }
     });
 
     uploadModel.addPendingUpload(sender.id, pendingMeta);
 
-    return res.json({ ok: true, file: pendingMeta });
+    return res.json({ ok: true, upload });
   } catch (error) {
-    await logUploadRejection(req, sender, error.message || "Không thể upload file.");
+    await logUploadRejection(req, sender, error.message || "Không thể ký URL upload.", {
+      fileName,
+      mimeType
+    });
     return res.status(400).json({
       ok: false,
-      error: error.message || "Không thể upload file."
+      error: error.message || "Không thể ký URL upload."
     });
   }
 }
 
+async function uploadFile(req, res) {
+  return res.status(410).json({
+    ok: false,
+    error: "Endpoint đã ngừng hỗ trợ. Dùng POST /api/uploads/sign."
+  });
+}
+
 async function refreshFileUrl(req, res) {
-  const configError = getSupabaseError();
+  const configError = getStorageConfigError();
   if (configError) {
     return res.status(503).json({ ok: false, error: configError });
   }
@@ -148,9 +188,9 @@ async function refreshFileUrl(req, res) {
     const fileUrl = await resolveFileUrl(fileKey);
     const payload = { ok: true, fileKey, fileUrl };
 
-    if (!config.supabaseStoragePublic) {
+    if (!config.s3PublicBaseUrl) {
       payload.expiresAt = new Date(
-        Date.now() + config.signedUrlTtlSeconds * 1000
+        Date.now() + config.s3SignedUrlTtlSeconds * 1000
       ).toISOString();
     }
 
@@ -164,6 +204,7 @@ async function refreshFileUrl(req, res) {
 }
 
 module.exports = {
+  signUpload,
   uploadFile,
   refreshFileUrl
 };

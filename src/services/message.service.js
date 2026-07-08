@@ -6,7 +6,8 @@ const userRepository = require("../repositories/user.repository");
 const auditService = require("./audit.service");
 const badWordService = require("./bad-word.service");
 const { sanitizeMessage } = require("../utils/sanitize");
-const { isAllowedReaction } = require("../utils/emoji");
+const { normalizeReactionPayload } = require("../utils/icon");
+const iconService = require("./icon.service");
 
 function isStaff(userRow) {
   return userRow?.role === "admin" || userRow?.role === "moderator";
@@ -129,10 +130,10 @@ async function deleteMessage(actorId, messageId, req = null) {
   return deleted;
 }
 
-async function addReaction(actorId, messageId, emoji, req = null) {
-  if (!isAllowedReaction(emoji)) {
-    throw new Error("Emoji reaction không được hỗ trợ.");
-  }
+async function addReaction(actorId, messageId, payload, req = null) {
+  const reaction = normalizeReactionPayload(
+    typeof payload === "object" ? payload : { emoji: payload }
+  );
 
   const { message } = await getMessageForActor(messageId, actorId);
   if (message.deleted_at) {
@@ -142,22 +143,29 @@ async function addReaction(actorId, messageId, emoji, req = null) {
   await reactionRepository.addReaction({
     messageId,
     userId: actorId,
-    emoji: emoji.trim()
+    reactionType: reaction.reactionType,
+    value: reaction.value,
+    color: reaction.color
   });
+
+  if (reaction.reactionType === "icon") {
+    await iconService.rememberIcon(actorId, reaction.value, reaction.color);
+  }
 
   return messageRepository.findById(messageId);
 }
 
-async function removeReaction(actorId, messageId, emoji) {
-  if (!isAllowedReaction(emoji)) {
-    throw new Error("Emoji reaction không được hỗ trợ.");
-  }
+async function removeReaction(actorId, messageId, payload) {
+  const reaction = normalizeReactionPayload(
+    typeof payload === "object" ? payload : { emoji: payload }
+  );
 
   await getMessageForActor(messageId, actorId);
   await reactionRepository.removeReaction({
     messageId,
     userId: actorId,
-    emoji: emoji.trim()
+    reactionType: reaction.reactionType,
+    value: reaction.value
   });
 
   return messageRepository.findById(messageId);

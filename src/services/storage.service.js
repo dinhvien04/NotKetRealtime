@@ -1,58 +1,91 @@
+const path = require("path");
 const { randomUUID } = require("crypto");
+const {
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand
+} = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const config = require("../config/env");
-const { getSupabaseClient } = require("./supabase.service");
-const { getKindFromMimeType, getMaxBytesForKind } = require("../utils/mime");
+const { getS3Client } = require("./s3.service");
+const {
+  getKindFromMimeType,
+  getMaxBytesForKind,
+  isAllowedMimeType,
+  isVoiceMimeType
+} = require("../utils/mime");
 const {
   validateUploadedFile,
-  extensionFromMimeType
+  extensionFromMimeType,
+  hasBlockedExtension
 } = require("../utils/file-magic");
 const { sanitizeFileName, sanitizeSenderId } = require("../utils/filename");
+const logger = require("../utils/logger");
 
-async function resolveFileUrl(fileKey) {
-  if (!fileKey) return null;
+const IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif"
+]);
 
-  const supabase = getSupabaseClient();
-  const bucket = config.supabaseStorageBucket;
-
-  if (config.supabaseStoragePublic) {
-    const { data } = supabase.storage.from(bucket).getPublicUrl(fileKey);
-    return data.publicUrl;
+function redactPresignedUrl(url) {
+  if (typeof url !== "string" || !url) {
+    return url;
   }
 
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .createSignedUrl(fileKey, config.signedUrlTtlSeconds);
-
-  if (error) {
-    throw new Error(error.message || "Không thể tạo signed URL.");
-  }
-
-  return data.signedUrl;
+  return url
+    .replace(/(X-Amz-Signature=)[^&\s"']+/gi, "$1[REDACTED]")
+    .replace(/(X-Amz-Credential=)[^&\s"']+/gi, "$1[REDACTED]")
+    .replace(/(X-Amz-Security-Token=)[^&\s"']+/gi, "$1[REDACTED]");
 }
 
-async function uploadChatFile({
-  buffer,
+function validateExtensionForMime(fileName, mimeType) {
+  const extension = path.extname(String(fileName || "")).toLowerCase().slice(1);
+  if (!extension) {
+    return;
+  }
+
+  const expected = extensionFromMimeType(mimeType);
+  if (extension === expected) {
+    return;
+  }
+
+  if (mimeType === "image/jpeg" && (extension === "jpg" || extension === "jpeg")) {
+    return;
+  }
+
+  throw new Error("Phần mở rộng file không khớp với MIME type.");
+}
+
+function validateUploadMetadata({
   originalName,
   mimeType,
   size,
   senderId,
-  kind = null
+  kind = null,
+  durationMs = null
 }) {
-  if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
-    throw new Error("File không hợp lệ.");
+  if (!originalName || typeof originalName !== "string") {
+    throw new Error("Tên file không hợp lệ.");
   }
 
-  if (!size || size <= 0) {
+  if (!mimeType || !isAllowedMimeType(mimeType)) {
+    throw new Error("Loại file không được hỗ trợ.");
+  }
+
+  if (hasBlockedExtension(originalName)) {
+    throw new Error("Phần mở rộng file không được phép.");
+  }
+
+  validateExtensionForMime(originalName, mimeType);
+
+  if (!Number.isFinite(size) || size <= 0) {
     throw new Error("Kích thước file không hợp lệ.");
   }
 
-  const validatedMimeType = await validateUploadedFile({
-    buffer,
-    declaredMimeType: mimeType,
-    originalName
-  });
-
-  const resolvedKind = getKindFromMimeType(validatedMimeType, kind);
+  const resolvedKind = getKindFromMimeType(mimeType, kind);
   const maxBytes = getMaxBytesForKind(resolvedKind);
 
   if (size > maxBytes) {
@@ -61,51 +94,179 @@ async function uploadChatFile({
     );
   }
 
-  const supabase = getSupabaseClient();
-  const safeSenderId = sanitizeSenderId(senderId);
-  const displayFileName = sanitizeFileName(originalName);
+  if (resolvedKind === "voice") {
+    if (!isVoiceMimeType(mimeType)) {
+      throw new Error("MIME type không hợp lệ cho voice message.");
+    }
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      throw new Error("Voice message cần durationMs hợp lệ.");
+    }
+    const maxDurationMs = config.maxVoiceSeconds * 1000;
+    if (durationMs > maxDurationMs) {
+      throw new Error(`Voice message vượt quá ${config.maxVoiceSeconds} giây.`);
+    }
+  }
+
+  if (!senderId) {
+    throw new Error("Thiếu senderId.");
+  }
+
+  return {
+    resolvedKind,
+    displayFileName: sanitizeFileName(originalName),
+    safeSenderId: sanitizeSenderId(senderId),
+    mimeType
+  };
+}
+
+async function createPresignedUpload({
+  originalName,
+  mimeType,
+  size,
+  senderId,
+  kind = null,
+  durationMs = null
+}) {
+  const {
+    resolvedKind,
+    displayFileName,
+    safeSenderId,
+    mimeType: validatedMimeType
+  } = validateUploadMetadata({
+    originalName,
+    mimeType,
+    size,
+    senderId,
+    kind,
+    durationMs
+  });
+
   const now = new Date();
   const year = String(now.getFullYear());
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const storedFileName = `${randomUUID()}.${extensionFromMimeType(validatedMimeType)}`;
   const fileKey = `chats/${safeSenderId}/${year}/${month}/${storedFileName}`;
 
-  const { error } = await supabase.storage
-    .from(config.supabaseStorageBucket)
-    .upload(fileKey, buffer, {
-      contentType: validatedMimeType,
-      upsert: false
-    });
+  const s3Client = getS3Client();
+  const command = new PutObjectCommand({
+    Bucket: config.s3Bucket,
+    Key: fileKey,
+    ContentType: validatedMimeType,
+    Metadata: {
+      originalname: displayFileName.slice(0, 120),
+      userid: safeSenderId,
+      kind: resolvedKind
+    }
+  });
 
-  if (error) {
-    throw new Error(error.message || "Không thể upload file lên Supabase Storage.");
-  }
+  const expiresIn = config.s3PresignedUploadTtlSeconds;
+  const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn });
 
-  const fileUrl = await resolveFileUrl(fileKey);
-  const result = {
+  logger.debug("Presigned upload URL created", {
+    fileKey,
     kind: resolvedKind,
-    fileUrl,
+    uploadUrl: redactPresignedUrl(uploadUrl)
+  });
+
+  return {
+    uploadUrl,
+    method: "PUT",
+    headers: {
+      "Content-Type": validatedMimeType
+    },
     fileKey,
     fileName: displayFileName,
     mimeType: validatedMimeType,
-    size
+    size,
+    kind: resolvedKind,
+    durationMs: resolvedKind === "voice" ? durationMs : null,
+    expiresIn
   };
-
-  if (!config.supabaseStoragePublic) {
-    result.expiresAt = new Date(
-      Date.now() + config.signedUrlTtlSeconds * 1000
-    ).toISOString();
-  }
-
-  return result;
 }
 
-const IMAGE_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif"
-]);
+async function resolveFileUrl(fileKey) {
+  if (!fileKey) {
+    return null;
+  }
+
+  if (config.s3PublicBaseUrl) {
+    const base = config.s3PublicBaseUrl.replace(/\/$/, "");
+    return `${base}/${fileKey}`;
+  }
+
+  const s3Client = getS3Client();
+  const command = new GetObjectCommand({
+    Bucket: config.s3Bucket,
+    Key: fileKey
+  });
+
+  const signedUrl = await getSignedUrl(s3Client, command, {
+    expiresIn: config.s3SignedUrlTtlSeconds
+  });
+
+  logger.debug("Signed GET URL created", {
+    fileKey,
+    signedUrl: redactPresignedUrl(signedUrl)
+  });
+
+  return signedUrl;
+}
+
+async function verifyUploadedObject({ fileKey, expectedSize, expectedMimeType }) {
+  if (!fileKey) {
+    throw new Error("Thiếu fileKey.");
+  }
+
+  const s3Client = getS3Client();
+
+  let head;
+  try {
+    head = await s3Client.send(
+      new HeadObjectCommand({
+        Bucket: config.s3Bucket,
+        Key: fileKey
+      })
+    );
+  } catch (error) {
+    if (error?.name === "NotFound" || error?.$metadata?.httpStatusCode === 404) {
+      throw new Error("Object chưa tồn tại trên storage.");
+    }
+    throw new Error(error?.message || "Không thể xác minh object trên storage.");
+  }
+
+  if (!head) {
+    throw new Error("Object chưa tồn tại trên storage.");
+  }
+
+  if (
+    Number.isFinite(expectedSize) &&
+    expectedSize > 0 &&
+    Number(head.ContentLength) !== Number(expectedSize)
+  ) {
+    throw new Error("Kích thước object không khớp metadata.");
+  }
+
+  if (expectedMimeType && head.ContentType && head.ContentType !== expectedMimeType) {
+    throw new Error("Content-Type object không khớp metadata.");
+  }
+
+  return true;
+}
+
+async function deleteObject(fileKey) {
+  if (!fileKey) {
+    return false;
+  }
+
+  const s3Client = getS3Client();
+  await s3Client.send(
+    new DeleteObjectCommand({
+      Bucket: config.s3Bucket,
+      Key: fileKey
+    })
+  );
+  return true;
+}
 
 async function uploadAvatar({ buffer, mimeType, size, userId }) {
   if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
@@ -126,21 +287,19 @@ async function uploadAvatar({ buffer, mimeType, size, userId }) {
     originalName: `avatar.${extensionFromMimeType(mimeType)}`
   });
 
-  const supabase = getSupabaseClient();
   const safeUserId = sanitizeSenderId(userId);
   const storedFileName = `${randomUUID()}.${extensionFromMimeType(validatedMimeType)}`;
   const fileKey = `avatars/${safeUserId}/${storedFileName}`;
 
-  const { error } = await supabase.storage
-    .from(config.supabaseStorageBucket)
-    .upload(fileKey, buffer, {
-      contentType: validatedMimeType,
-      upsert: true
-    });
-
-  if (error) {
-    throw new Error(error.message || "Không thể upload ảnh đại diện.");
-  }
+  const s3Client = getS3Client();
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: config.s3Bucket,
+      Key: fileKey,
+      Body: buffer,
+      ContentType: validatedMimeType
+    })
+  );
 
   const avatarUrl = await resolveFileUrl(fileKey);
 
@@ -153,7 +312,11 @@ async function uploadAvatar({ buffer, mimeType, size, userId }) {
 }
 
 module.exports = {
-  uploadChatFile,
-  uploadAvatar,
-  resolveFileUrl
+  redactPresignedUrl,
+  validateUploadMetadata,
+  createPresignedUpload,
+  resolveFileUrl,
+  verifyUploadedObject,
+  deleteObject,
+  uploadAvatar
 };

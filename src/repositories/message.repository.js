@@ -62,7 +62,7 @@ function getCachedSignedUrl(fileKey) {
 }
 
 function cacheSignedUrl(fileKey, url) {
-  const ttlMs = Math.max((config.signedUrlTtlSeconds - 60) * 1000, 30_000);
+  const ttlMs = Math.max((config.s3SignedUrlTtlSeconds - 60) * 1000, 30_000);
   signedUrlCache.set(fileKey, {
     url,
     expiresAt: Date.now() + ttlMs
@@ -158,7 +158,7 @@ async function createMessage({
   wasFiltered = false,
   filterHits = []
 }) {
-  const persistedFileUrl = config.supabaseStoragePublic ? fileUrl || null : null;
+  const persistedFileUrl = config.s3PublicBaseUrl ? fileUrl || null : null;
 
   const result = await query(
     `INSERT INTO messages (

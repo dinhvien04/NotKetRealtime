@@ -1,11 +1,13 @@
 const assert = require("assert");
-const { parseSupabaseStoragePublic } = require("../src/config/env");
+const { parseBooleanEnv } = require("../src/config/env");
 
-assert.equal(parseSupabaseStoragePublic(undefined), false);
-assert.equal(parseSupabaseStoragePublic(""), false);
-assert.equal(parseSupabaseStoragePublic("true"), true);
-assert.equal(parseSupabaseStoragePublic("1"), true);
-assert.equal(parseSupabaseStoragePublic("false"), false);
-assert.equal(parseSupabaseStoragePublic("0"), false);
+assert.equal(parseBooleanEnv(undefined), false);
+assert.equal(parseBooleanEnv(""), false);
+assert.equal(parseBooleanEnv("true"), true);
+assert.equal(parseBooleanEnv("1"), true);
+assert.equal(parseBooleanEnv("false"), false);
+assert.equal(parseBooleanEnv("0"), false);
+assert.equal(parseBooleanEnv("true", false), true);
+assert.equal(parseBooleanEnv(undefined, true), true);
 
-console.log("Đã kiểm tra SUPABASE_STORAGE_PUBLIC default và parsing.");
+console.log("Đã kiểm tra parseBooleanEnv và S3 env parsing helpers.");

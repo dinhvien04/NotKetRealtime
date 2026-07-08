@@ -18,6 +18,9 @@ const ALLOWED_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏", "�
 const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_VOICE_SECONDS = 120;
 const DELETED_LABEL = "Tin nhắn đã bị xóa";
+const ICON_NAME_PATTERN = /^([a-z0-9-]+):([a-z0-9][a-z0-9-]*[a-z0-9])$/;
+const ICON_COLOR_PRESETS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899", "#64748b"];
+const POPULAR_ICONS = ["lucide:heart", "lucide:thumbs-up", "lucide:smile", "lucide:star", "lucide:flame", "lucide:party-popper", "lucide:zap", "lucide:check", "lucide:x", "lucide:globe-2", "lucide:users", "mdi:account-group", "mdi:robot", "mdi:chat", "mdi:image", "material-symbols:favorite", "material-symbols:thumb-up"];
 const socket = page === "chat" ? io({ withCredentials: true }) : null;
 
 const elements = {
@@ -118,6 +121,9 @@ const elements = {
   groupForm: document.getElementById("groupForm"),
   groupNameInput: document.getElementById("groupNameInput"),
   groupMembersInput: document.getElementById("groupMembersInput"),
+  groupIconButton: document.getElementById("groupIconButton"),
+  groupIconPreview: document.getElementById("groupIconPreview"),
+  groupIconColor: document.getElementById("groupIconColor"),
   groupError: document.getElementById("groupError"),
   conversationTypeChip: document.getElementById("conversationTypeChip"),
   adminLink: document.getElementById("adminLink")
@@ -156,7 +162,17 @@ const state = {
   replyTo: null,
   recording: null,
   forgotResetTokenId: null,
-  forgotStep: "request"
+  forgotStep: "request",
+  iconConfig: {
+    allowedPrefixes: ["lucide", "mdi", "material-symbols"],
+    defaultPrefix: "lucide",
+    maxSearchResults: 60
+  },
+  selectedGroupIcon: {
+    iconName: "lucide:users",
+    color: "#22c55e"
+  },
+  iconSearchTimer: null
 };
 
 async function ensureCsrfToken() {
@@ -213,10 +229,51 @@ function getInitials(name = "") {
     .join("");
 }
 
+function isSafeIconName(iconName) {
+  return typeof iconName === "string" &&
+    iconName.length <= 120 &&
+    ICON_NAME_PATTERN.test(iconName) &&
+    state.iconConfig.allowedPrefixes.includes(iconName.split(":")[0]);
+}
+
+function normalizeHexColor(color) {
+  if (!color) return null;
+  const value = String(color).trim().toLowerCase();
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/.test(value) ? value : null;
+}
+
+function createIconElement(iconName, color, className = "reaction-icon") {
+  if (!isSafeIconName(iconName)) return null;
+  const icon = document.createElement("iconify-icon");
+  icon.className = className;
+  icon.setAttribute("icon", iconName);
+  const safeColor = normalizeHexColor(color);
+  if (safeColor) icon.style.color = safeColor;
+  return icon;
+}
+
+function renderConversationIcon(element, conversation, fallbackName) {
+  if (!element) return;
+  element.replaceChildren();
+  element.style.backgroundImage = "";
+  element.classList.remove("conversation-icon");
+  const iconName = conversation?.iconName;
+  if (isSafeIconName(iconName)) {
+    element.classList.add("conversation-icon");
+    const icon = createIconElement(iconName, conversation.iconColor, "group-icon");
+    if (icon) {
+      element.append(icon);
+      return;
+    }
+  }
+  element.textContent = getInitials(fallbackName || "");
+}
+
 function setAvatar(element, name, avatarUrl) {
   if (!element) return;
   if (avatarUrl) {
     element.textContent = "";
+    element.replaceChildren();
     element.style.backgroundImage = `url("${avatarUrl}")`;
     element.style.backgroundSize = "cover";
     element.style.backgroundPosition = "center";
@@ -344,6 +401,17 @@ function hideSearchResults() {
   elements.searchResults?.replaceChildren();
 }
 
+function normalizeReactionForClient(reaction) {
+  const reactionType = reaction.type || reaction.reactionType || (reaction.iconName ? "icon" : "emoji");
+  const value = reaction.value || reaction.emoji || reaction.iconName;
+  return {
+    ...reaction,
+    reactionType,
+    value,
+    color: normalizeHexColor(reaction.color || reaction.iconColor)
+  };
+}
+
 function renderReactionChips(container, message) {
   container.replaceChildren();
   const reactions = Array.isArray(message.reactions) ? message.reactions : [];
@@ -353,22 +421,38 @@ function renderReactionChips(container, message) {
   }
   container.classList.remove("is-hidden");
   const grouped = new Map();
-  for (const reaction of reactions) {
-    const key = reaction.emoji;
+  for (const reaction of reactions.map(normalizeReactionForClient)) {
+    if (!reaction.value) continue;
+    const key = `${reaction.reactionType}:${reaction.value}:${reaction.color || ""}`;
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key).push(reaction);
   }
-  for (const [emoji, items] of grouped) {
+  for (const items of grouped.values()) {
+    const sample = items[0];
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "message-reaction-chip";
+    if (sample.reactionType === "icon") chip.classList.add("icon-reaction");
     const reacted = items.some((item) => item.userId === state.currentUser?.id);
     if (reacted) chip.classList.add("is-own");
-    chip.textContent = `${emoji} ${items.length}`;
+    if (sample.reactionType === "icon") {
+      const icon = createIconElement(sample.value, sample.color, "reaction-icon");
+      if (icon) chip.append(icon);
+      else chip.textContent = "Icon";
+    } else {
+      const emoji = document.createElement("span");
+      emoji.textContent = sample.value;
+      chip.append(emoji);
+    }
+    const count = document.createElement("span");
+    count.textContent = String(items.length);
+    chip.append(count);
     chip.title = items
       .map((item) => item.displayName || item.username || "User")
       .join(", ");
-    chip.addEventListener("click", () => toggleReaction(message.id, emoji, reacted));
+    chip.addEventListener("click", () =>
+      toggleReaction(message.id, sample.reactionType, sample.value, reacted, sample.color)
+    );
     container.append(chip);
   }
 }
@@ -476,6 +560,157 @@ function updateMessageRow(message) {
   if (actions) actions.replaceWith(createMessageActions(message));
 }
 
+function createIconPicker({ onSelect, selectedIconName = "lucide:heart", selectedColor = "#ef4444" } = {}) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "icon-picker-backdrop";
+  const panel = document.createElement("div");
+  panel.className = "icon-picker-panel";
+  const title = document.createElement("h3");
+  title.textContent = "Chọn Iconify icon";
+  const search = document.createElement("input");
+  search.className = "icon-picker-search";
+  search.type = "search";
+  search.placeholder = "Tìm icon...";
+  search.maxLength = 80;
+  const prefixTabs = document.createElement("div");
+  prefixTabs.className = "icon-picker-prefix-tabs";
+  const colorRow = document.createElement("div");
+  colorRow.className = "icon-picker-color-row";
+  const grid = document.createElement("div");
+  grid.className = "icon-picker-grid";
+  const status = document.createElement("p");
+  status.className = "icon-picker-status";
+  let activePrefix = "";
+  let currentColor = normalizeHexColor(selectedColor) || "#ef4444";
+
+  function close() {
+    backdrop.remove();
+    window.clearTimeout(state.iconSearchTimer);
+  }
+
+  function renderColors() {
+    colorRow.replaceChildren();
+    for (const color of ICON_COLOR_PRESETS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "icon-picker-color";
+      button.style.backgroundColor = color;
+      button.setAttribute("aria-label", color);
+      if (color === currentColor) button.classList.add("is-selected");
+      button.addEventListener("click", () => {
+        currentColor = color;
+        renderColors();
+      });
+      colorRow.append(button);
+    }
+    const custom = document.createElement("input");
+    custom.type = "text";
+    custom.maxLength = 7;
+    custom.value = currentColor;
+    custom.setAttribute("aria-label", "Màu hex");
+    custom.addEventListener("change", () => {
+      const safeColor = normalizeHexColor(custom.value);
+      if (safeColor) currentColor = safeColor;
+      custom.value = currentColor;
+      renderColors();
+    });
+    colorRow.append(custom);
+  }
+
+  function renderIcons(icons) {
+    grid.replaceChildren();
+    const safeIcons = icons.filter((item) => isSafeIconName(item.iconName || item));
+    if (!safeIcons.length) {
+      status.textContent = "Không có icon phù hợp.";
+      return;
+    }
+    status.textContent = "";
+    for (const item of safeIcons) {
+      const iconName = item.iconName || item;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "icon-picker-item";
+      if (iconName === selectedIconName) button.classList.add("is-selected");
+      const icon = createIconElement(iconName, currentColor, "icon-picker-symbol");
+      const label = document.createElement("span");
+      label.textContent = iconName.split(":")[1];
+      if (icon) button.append(icon);
+      button.append(label);
+      button.addEventListener("click", () => {
+        onSelect?.({ iconName, color: currentColor });
+        api("/api/icons/recent", {
+          method: "POST",
+          body: JSON.stringify({ iconName, color: currentColor })
+        }).catch(() => {});
+        close();
+      });
+      grid.append(button);
+    }
+  }
+
+  async function searchIcons() {
+    const q = search.value.trim();
+    const params = new URLSearchParams({ q, limit: String(state.iconConfig.maxSearchResults || 60) });
+    if (activePrefix) params.set("prefix", activePrefix);
+    status.textContent = "Đang tải icon...";
+    try {
+      const result = await api(`/api/icons/search?${params.toString()}`);
+      renderIcons(result.icons || []);
+    } catch (_error) {
+      const fallback = POPULAR_ICONS
+        .filter((iconName) => !activePrefix || iconName.startsWith(`${activePrefix}:`))
+        .filter((iconName) => !q || iconName.includes(q.toLowerCase()))
+        .map((iconName) => ({ iconName }));
+      renderIcons(fallback);
+    }
+  }
+
+  const allButton = document.createElement("button");
+  allButton.type = "button";
+  allButton.className = "is-active";
+  allButton.textContent = "all";
+  allButton.addEventListener("click", () => {
+    activePrefix = "";
+    prefixTabs.querySelectorAll("button").forEach((button) => button.classList.remove("is-active"));
+    allButton.classList.add("is-active");
+    searchIcons();
+  });
+  prefixTabs.append(allButton);
+  for (const prefix of state.iconConfig.allowedPrefixes) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = prefix;
+    button.addEventListener("click", () => {
+      activePrefix = prefix;
+      prefixTabs.querySelectorAll("button").forEach((item) => item.classList.remove("is-active"));
+      button.classList.add("is-active");
+      searchIcons();
+    });
+    prefixTabs.append(button);
+  }
+
+  search.addEventListener("input", () => {
+    window.clearTimeout(state.iconSearchTimer);
+    state.iconSearchTimer = window.setTimeout(searchIcons, 250);
+  });
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop) close();
+  });
+  document.addEventListener("keydown", function onKeydown(event) {
+    if (event.key === "Escape" && document.body.contains(backdrop)) {
+      document.removeEventListener("keydown", onKeydown);
+      close();
+    }
+  });
+
+  renderColors();
+  panel.append(title, search, prefixTabs, colorRow, status, grid);
+  backdrop.append(panel);
+  document.body.append(backdrop);
+  searchIcons();
+  search.focus();
+}
+
 function openReactionPicker(messageId) {
   const picker = document.createElement("div");
   picker.className = "reaction-picker";
@@ -485,11 +720,22 @@ function openReactionPicker(messageId) {
     btn.className = "reaction-btn";
     btn.textContent = emoji;
     btn.addEventListener("click", () => {
-      addReaction(messageId, emoji);
+      addReaction(messageId, "emoji", emoji);
       picker.remove();
     });
     picker.append(btn);
   }
+  const iconButton = document.createElement("button");
+  iconButton.type = "button";
+  iconButton.className = "reaction-btn";
+  iconButton.textContent = "Icon";
+  iconButton.addEventListener("click", () => {
+    picker.remove();
+    createIconPicker({
+      onSelect: ({ iconName, color }) => addReaction(messageId, "icon", iconName, color)
+    });
+  });
+  picker.append(iconButton);
   const row = state.messageRows.get(messageId);
   if (row) {
     row.append(picker);
@@ -532,16 +778,24 @@ async function deleteMessage(messageId) {
   if (response.message) updateMessageRow(response.message);
 }
 
-async function addReaction(messageId, emoji) {
-  const response = await emitSocketAck("add_reaction", { messageId, emoji });
+async function addReaction(messageId, reactionType, value, color = null) {
+  const payload =
+    reactionType === "icon"
+      ? { messageId, reactionType: "icon", value, color }
+      : { messageId, reactionType: "emoji", value, emoji: value };
+  const response = await emitSocketAck("add_reaction", payload);
   if (!response?.ok) {
     showToast(response?.error || "Không thể thêm reaction.", "error");
   }
 }
 
-async function toggleReaction(messageId, emoji, hasReacted) {
+async function toggleReaction(messageId, reactionType, value, hasReacted, color = null) {
   const eventName = hasReacted ? "remove_reaction" : "add_reaction";
-  const response = await emitSocketAck(eventName, { messageId, emoji });
+  const payload =
+    reactionType === "icon"
+      ? { messageId, reactionType: "icon", value, color }
+      : { messageId, reactionType: "emoji", value, emoji: value };
+  const response = await emitSocketAck(eventName, payload);
   if (!response?.ok) {
     showToast(response?.error || "Không thể cập nhật reaction.", "error");
   }
@@ -800,7 +1054,7 @@ function setUploadProgress(percent) {
 function renderConversationHeader(user = state.selectedUser, isOnline = true) {
   if (state.chatMode === "public" && state.publicRoom) {
     elements.selectedUsername.textContent = state.publicRoom.name || "Phòng trò chuyện";
-    setAvatar(elements.selectedAvatar, "P");
+    renderConversationIcon(elements.selectedAvatar, state.publicRoom, "P");
     elements.selectedStatus.classList.remove("is-offline");
     elements.selectedStatus.lastChild.textContent = "Phòng công khai";
     elements.conversationTypeChip.textContent = "Phòng chung";
@@ -808,7 +1062,11 @@ function renderConversationHeader(user = state.selectedUser, isOnline = true) {
   } else if (state.chatMode === "group" && state.activeConversation) {
     elements.selectedUsername.textContent =
       state.activeConversation.name || "Nhóm chat";
-    setAvatar(elements.selectedAvatar, state.activeConversation.name || "G");
+    renderConversationIcon(
+      elements.selectedAvatar,
+      state.activeConversation,
+      state.activeConversation.name || "G"
+    );
     elements.selectedStatus.classList.remove("is-offline");
     elements.selectedStatus.lastChild.textContent = "Nhóm chat";
     elements.conversationTypeChip.textContent = "Nhóm";
@@ -1076,7 +1334,7 @@ function createPublicRoomItem() {
   button.className = "user-item";
   if (state.chatMode === "public") button.classList.add("is-active");
   avatar.className = "avatar";
-  setAvatar(avatar, "P");
+  renderConversationIcon(avatar, state.publicRoom, "P");
   copy.className = "user-copy";
   name.textContent = state.publicRoom.name || "Phòng trò chuyện";
   preview.textContent = "Chat công khai cho mọi người";
@@ -1107,7 +1365,7 @@ function createGroupItem(group) {
     button.classList.add("is-active");
   }
   avatar.className = "avatar";
-  setAvatar(avatar, group.name || "G");
+  renderConversationIcon(avatar, group, group.name || "G");
   copy.className = "user-copy";
   name.textContent = group.name || "Nhóm chat";
   const last = group.lastMessage;
@@ -1441,52 +1699,79 @@ function handleIncomingRoomMessage(message, mode) {
   }
 }
 
-function uploadFileWithProgress(file, extraFields = {}) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const csrfToken = await ensureCsrfToken();
-      const formData = new FormData();
-      formData.append("file", file);
-      for (const [key, value] of Object.entries(extraFields)) {
-        if (value !== undefined && value !== null) {
-          formData.append(key, String(value));
-        }
-      }
+function inferUploadKind(file, extraFields = {}) {
+  if (extraFields.kind) return extraFields.kind;
+  if (file?.type?.startsWith("image/")) return "image";
+  if (file?.type?.startsWith("audio/")) return "voice";
+  return "file";
+}
 
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/uploads");
-      xhr.withCredentials = true;
-      xhr.setRequestHeader("X-CSRF-Token", csrfToken);
-      xhr.upload.addEventListener("progress", (event) => {
-        if (!event.lengthComputable) return;
-        const percent = Math.round((event.loaded / event.total) * 100);
-        setUploadProgress(percent);
-      });
-      xhr.addEventListener("load", () => {
-        setUploadProgress(null);
-        let result = {};
-        try {
-          result = JSON.parse(xhr.responseText || "{}");
-        } catch (_error) {
-          reject(new Error("Phản hồi upload không hợp lệ."));
-          return;
-        }
-        if (xhr.status >= 200 && xhr.status < 300 && result.ok) {
-          resolve(result.file);
-          return;
-        }
-        reject(new Error(result.error || "Không thể upload file."));
-      });
-      xhr.addEventListener("error", () => {
-        setUploadProgress(null);
-        reject(new Error("Không thể upload file."));
-      });
-      xhr.send(formData);
-    } catch (error) {
-      setUploadProgress(null);
-      reject(error);
-    }
+async function signUpload(file, extraFields = {}) {
+  const csrfToken = await ensureCsrfToken();
+  const kind = inferUploadKind(file, extraFields);
+  const response = await fetch("/api/uploads/sign", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken
+    },
+    body: JSON.stringify({
+      fileName: file.name,
+      mimeType: file.type,
+      size: file.size,
+      kind,
+      durationMs:
+        extraFields.durationMs === undefined ? null : extraFields.durationMs
+    })
   });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok || !data.upload) {
+    throw new Error(data.error || "Không thể ký URL upload.");
+  }
+  return data.upload;
+}
+
+function putFileToSignedUrl(file, upload) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(upload.method || "PUT", upload.uploadUrl);
+    const headers = upload.headers || {};
+    for (const [key, value] of Object.entries(headers)) {
+      xhr.setRequestHeader(key, value);
+    }
+    xhr.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable) return;
+      const percent = Math.round((event.loaded / event.total) * 100);
+      setUploadProgress(percent);
+    });
+    xhr.addEventListener("load", () => {
+      setUploadProgress(null);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+        return;
+      }
+      reject(new Error("Không thể upload file lên storage."));
+    });
+    xhr.addEventListener("error", () => {
+      setUploadProgress(null);
+      reject(new Error("Không thể upload file lên storage."));
+    });
+    xhr.send(file);
+  });
+}
+
+async function uploadFileWithProgress(file, extraFields = {}) {
+  const upload = await signUpload(file, extraFields);
+  await putFileToSignedUrl(file, upload);
+  return {
+    kind: upload.kind,
+    fileKey: upload.fileKey,
+    fileName: upload.fileName,
+    mimeType: upload.mimeType,
+    size: upload.size,
+    durationMs: upload.durationMs ?? extraFields.durationMs ?? null
+  };
 }
 
 async function uploadSelectedFile(file, extraFields = {}, maxAttempts = 3) {
@@ -1541,7 +1826,6 @@ async function sendCurrentMessage(payload) {
 async function sendFileMessage(fileMeta) {
   await sendCurrentMessage({
     type: fileMeta.kind,
-    fileUrl: fileMeta.fileUrl,
     fileKey: fileMeta.fileKey,
     fileName: fileMeta.fileName,
     mimeType: fileMeta.mimeType,
@@ -1764,10 +2048,25 @@ async function handleMessageSubmit() {
   }
 }
 
+function renderGroupIconPreview() {
+  if (!elements.groupIconPreview) return;
+  elements.groupIconPreview.replaceChildren();
+  const icon = createIconElement(
+    state.selectedGroupIcon.iconName,
+    state.selectedGroupIcon.color,
+    "group-icon-preview-symbol"
+  );
+  if (icon) elements.groupIconPreview.append(icon);
+  else elements.groupIconPreview.textContent = "G";
+  if (elements.groupIconColor) elements.groupIconColor.value = state.selectedGroupIcon.color;
+}
+
 function openGroupModal() {
   elements.groupError.textContent = "";
   elements.groupNameInput.value = "";
   elements.groupMembersInput.value = "";
+  state.selectedGroupIcon = { iconName: "lucide:users", color: "#22c55e" };
+  renderGroupIconPreview();
   elements.groupModal?.classList.remove("is-hidden");
 }
 
@@ -2052,6 +2351,21 @@ if (page === "chat") {
   elements.tabGroups?.addEventListener("click", () => switchSidebarTab("groups"));
   elements.createGroupButton?.addEventListener("click", openGroupModal);
   elements.groupCloseButton?.addEventListener("click", closeGroupModal);
+  elements.groupIconButton?.addEventListener("click", () => {
+    createIconPicker({
+      selectedIconName: state.selectedGroupIcon.iconName,
+      selectedColor: state.selectedGroupIcon.color,
+      onSelect: ({ iconName, color }) => {
+        state.selectedGroupIcon = { iconName, color };
+        renderGroupIconPreview();
+      }
+    });
+  });
+  elements.groupIconColor?.addEventListener("change", () => {
+    const safeColor = normalizeHexColor(elements.groupIconColor.value);
+    if (safeColor) state.selectedGroupIcon.color = safeColor;
+    renderGroupIconPreview();
+  });
   elements.groupModal?.addEventListener("click", (event) => {
     if (event.target === elements.groupModal) closeGroupModal();
   });
@@ -2059,6 +2373,8 @@ if (page === "chat") {
     event.preventDefault();
     elements.groupError.textContent = "";
     const name = elements.groupNameInput.value.trim();
+    const iconName = state.selectedGroupIcon.iconName;
+    const iconColor = normalizeHexColor(elements.groupIconColor?.value) || state.selectedGroupIcon.color;
     const memberNames = elements.groupMembersInput.value
       .split(",")
       .map((item) => item.trim())
@@ -2075,7 +2391,7 @@ if (page === "chat") {
     try {
       const result = await api("/api/conversations/groups", {
         method: "POST",
-        body: JSON.stringify({ name, memberIds })
+        body: JSON.stringify({ name, memberIds, iconName, iconColor })
       });
       closeGroupModal();
       loadGroups();
@@ -2084,6 +2400,8 @@ if (page === "chat") {
         selectGroup({
           conversationId: result.group.id,
           name: result.group.name,
+          iconName: result.group.iconName,
+          iconColor: result.group.iconColor,
           unreadCount: 0
         });
       }

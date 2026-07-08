@@ -10,6 +10,14 @@ const registerSocketController = require("../src/controllers/socket.controller")
 const realtimeService = require("../src/services/realtime.service");
 const { socketAuthMiddleware } = require("../src/middlewares/socket-auth.middleware");
 const uploadModel = require("../src/models/upload.model");
+const storageService = require("../src/services/storage.service");
+
+const originalVerifyUploadedObject = storageService.verifyUploadedObject;
+const originalResolveFileUrl = storageService.resolveFileUrl;
+
+storageService.verifyUploadedObject = async () => true;
+storageService.resolveFileUrl = async (fileKey) =>
+  `https://storage.test/${fileKey}`;
 const { getDatabaseError, closePool } = require("../src/db");
 const {
   extractCookie,
@@ -264,6 +272,8 @@ async function run() {
       "Đã kiểm tra: auth socket, text/image DB, load history, reject fake upload, mark_read, race conversation."
     );
   } finally {
+    storageService.verifyUploadedObject = originalVerifyUploadedObject;
+    storageService.resolveFileUrl = originalResolveFileUrl;
     clearTimeout(guard);
     clientA.disconnect();
     clientB.disconnect();

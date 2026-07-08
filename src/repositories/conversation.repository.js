@@ -9,6 +9,8 @@ function mapConversationRow(row) {
     type: row.type,
     name: row.name || null,
     avatarUrl: row.avatar_url || null,
+    iconName: row.icon_name || null,
+    iconColor: row.icon_color || null,
     slug: row.slug || null,
     createdBy: row.created_by || null,
     createdAt: row.created_at,
@@ -285,6 +287,8 @@ async function listGroupsForUser(userId) {
        c.id AS conversation_id,
        c.name,
        c.avatar_url,
+       c.icon_name,
+       c.icon_color,
        c.updated_at,
        cp.role,
        lm.id AS last_message_id,
@@ -325,6 +329,8 @@ async function listGroupsForUser(userId) {
     type: "group",
     name: row.name || "Nhóm chat",
     avatarUrl: row.avatar_url || null,
+    iconName: row.icon_name || null,
+    iconColor: row.icon_color || null,
     role: row.role,
     lastMessage: row.last_message_id
       ? {
@@ -368,7 +374,7 @@ async function getPublicRoomForUser(userId) {
   };
 }
 
-async function createGroup({ name, ownerId, memberIds = [] }) {
+async function createGroup({ name, ownerId, memberIds = [], iconName = null, iconColor = null }) {
   const trimmedName = String(name || "").trim();
   if (!trimmedName) {
     throw new Error("Tên nhóm không được để trống.");
@@ -378,10 +384,10 @@ async function createGroup({ name, ownerId, memberIds = [] }) {
 
   return withTransaction(async (client) => {
     const conversation = await client.query(
-      `INSERT INTO conversations (type, name, created_by)
-       VALUES ('group', $1, $2)
+      `INSERT INTO conversations (type, name, created_by, icon_name, icon_color)
+       VALUES ('group', $1, $2, $3, $4)
        RETURNING *`,
-      [trimmedName, ownerId]
+      [trimmedName, ownerId, iconName || null, iconColor || null]
     );
     const conversationId = conversation.rows[0].id;
 
@@ -431,6 +437,16 @@ async function updateGroup(conversationId, userId, updates = {}) {
   if (updates.avatarUrl !== undefined) {
     fields.push(`avatar_url = $${index++}`);
     params.push(updates.avatarUrl || null);
+  }
+
+  if (updates.iconName !== undefined) {
+    fields.push(`icon_name = $${index++}`);
+    params.push(updates.iconName || null);
+  }
+
+  if (updates.iconColor !== undefined) {
+    fields.push(`icon_color = $${index++}`);
+    params.push(updates.iconColor || null);
   }
 
   if (!fields.length) {

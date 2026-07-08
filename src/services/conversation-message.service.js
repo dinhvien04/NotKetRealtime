@@ -1,6 +1,6 @@
 const messageModel = require("../models/message.model");
-const uploadModel = require("../models/upload.model");
 const conversationRepository = require("../repositories/conversation.repository");
+const { buildVerifiedFileMessagePayload } = require("./file-message.service");
 const { sanitizeMessage } = require("../utils/sanitize");
 
 const publicRateLimits = new Map();
@@ -26,7 +26,7 @@ function checkPublicRateLimit(userId) {
   }
 }
 
-function buildMessagePayload(user, payload = {}) {
+async function buildMessagePayload(user, payload = {}) {
   const messageType = payload.type || "text";
 
   if (messageType === "text") {
@@ -42,41 +42,7 @@ function buildMessagePayload(user, payload = {}) {
   }
 
   if (messageType === "image" || messageType === "file" || messageType === "voice") {
-    const pendingUpload = uploadModel.consumePendingUpload(
-      user.id,
-      payload.fileKey
-    );
-
-    if (!pendingUpload) {
-      throw new Error("File chưa được upload hợp lệ hoặc đã hết hạn.");
-    }
-
-    if (
-      pendingUpload.fileKey !== payload.fileKey ||
-      pendingUpload.fileName !== payload.fileName ||
-      pendingUpload.mimeType !== payload.mimeType ||
-      Number(pendingUpload.size) !== Number(payload.size)
-    ) {
-      throw new Error("Metadata file không khớp với upload đã xác thực.");
-    }
-
-    if (
-      pendingUpload.kind === "voice" &&
-      Number(pendingUpload.durationMs) !== Number(payload.durationMs)
-    ) {
-      throw new Error("Thời lượng voice không khớp với upload đã xác thực.");
-    }
-
-    return {
-      type: pendingUpload.kind,
-      fileUrl: pendingUpload.fileUrl,
-      fileKey: pendingUpload.fileKey,
-      fileName: pendingUpload.fileName,
-      mimeType: pendingUpload.mimeType,
-      size: pendingUpload.size,
-      durationMs: pendingUpload.durationMs || null,
-      replyToMessageId: payload.replyToMessageId || null
-    };
+    return buildVerifiedFileMessagePayload(user, payload);
   }
 
   throw new Error("Loại tin nhắn không được hỗ trợ.");
@@ -100,7 +66,7 @@ async function sendRoomMessage({ user, conversationId, payload, expectedType }) 
     checkPublicRateLimit(user.id);
   }
 
-  const messagePayload = buildMessagePayload(user, payload);
+  const messagePayload = await buildMessagePayload(user, payload);
   const message = await messageModel.createMessage({
     conversationId,
     senderId: user.id,

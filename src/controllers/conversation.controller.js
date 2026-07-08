@@ -47,7 +47,9 @@ async function createGroup(req, res) {
       req.user.id,
       {
         name: req.body?.name,
-        memberIds: Array.isArray(req.body?.memberIds) ? req.body.memberIds : []
+        memberIds: Array.isArray(req.body?.memberIds) ? req.body.memberIds : [],
+        iconName: req.body?.iconName,
+        iconColor: req.body?.iconColor
       },
       req
     );
@@ -72,7 +74,9 @@ async function updateGroup(req, res) {
       req.user.id,
       {
         name: req.body?.name,
-        avatarUrl: req.body?.avatarUrl
+        avatarUrl: req.body?.avatarUrl,
+        iconName: req.body?.iconName,
+        iconColor: req.body?.iconColor
       },
       req
     );

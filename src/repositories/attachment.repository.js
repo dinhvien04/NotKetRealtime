@@ -16,7 +16,7 @@ async function createPending({
     `INSERT INTO attachments (
        uploader_id, storage_provider, bucket, file_key, file_url,
        file_name, mime_type, file_size, kind, duration_ms, metadata
-     ) VALUES ($1, 'supabase', $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     ) VALUES ($1, 's3', $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       uploaderId,

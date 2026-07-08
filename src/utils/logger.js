@@ -18,7 +18,11 @@ const SENSITIVE_PATTERNS = [
   /(set-cookie\s*[:=]\s*)([^\s,;]+)/gi,
   /(DATABASE_URL\s*[:=]\s*)([^\s,;]+)/gi,
   /(JWT_SECRET\s*[:=]\s*)([^\s,;]+)/gi,
-  /(SUPABASE_SECRET_KEY\s*[:=]\s*)([^\s,;]+)/gi,
+  /(S3_SECRET_ACCESS_KEY\s*[:=]\s*)([^\s,;]+)/gi,
+  /(S3_ACCESS_KEY_ID\s*[:=]\s*)([^\s,;]+)/gi,
+  /(X-Amz-Signature=)[^&\s"']+/gi,
+  /(X-Amz-Credential=)[^&\s"']+/gi,
+  /(X-Amz-Security-Token=)[^&\s"']+/gi,
   /(GEMINI_API_KEY\s*[:=]\s*)([^\s,;]+)/gi
 ];
 
@@ -99,9 +103,9 @@ function write(level, message, meta = {}) {
   const payload = Object.keys(meta).length ? redactValue(meta) : "";
   if (level === "error") {
     console.error(prefix, entry.message, payload);
-  } else if (level === "warn") {
-    console.warn(prefix, entry.message, payload);
   } else {
+    // Dev/test: log warn/info/debug to stdout so PowerShell pipelines
+    // (npm test 2>&1 | ...) do not treat HTTP warn lines as failures.
     console.log(prefix, entry.message, payload);
   }
 }

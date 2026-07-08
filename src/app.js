@@ -13,6 +13,7 @@ const adminRoutes = require("./routes/admin.routes");
 const healthRoutes = require("./routes/health.routes");
 const aiRoutes = require("./routes/ai.routes");
 const csrfRoutes = require("./routes/csrf.routes");
+const iconRoutes = require("./routes/icon.routes");
 const requestLoggingMiddleware = require("./middlewares/request-logging.middleware");
 const { requireSameOriginFetch } = require("./middlewares/sec-fetch.middleware");
 
@@ -55,8 +56,16 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "https:"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: ["'self'", "ws:", "wss:", ...getS3ConnectSrc()],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://code.iconify.design"],
+        connectSrc: [
+          "'self'",
+          "ws:",
+          "wss:",
+          "https://api.iconify.design",
+          "https://api.simplesvg.com",
+          "https://api.unisvg.com",
+          ...getS3ConnectSrc()
+        ],
         styleSrc: ["'self'", "'unsafe-inline'"]
       }
     }
@@ -76,6 +85,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/conversations", conversationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/icons", iconRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/", webRoutes);
 

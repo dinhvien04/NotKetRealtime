@@ -1,6 +1,6 @@
 const presenceService = require("../services/presence.service");
 const messageModel = require("../models/message.model");
-const uploadModel = require("../models/upload.model");
+const { buildVerifiedFileMessagePayload } = require("../services/file-message.service");
 const conversationRepository = require("../repositories/conversation.repository");
 const messageRepository = require("../repositories/message.repository");
 const userRepository = require("../repositories/user.repository");
@@ -394,53 +394,15 @@ function registerSocketController(io) {
           messageType === "file" ||
           messageType === "voice"
         ) {
-          const pendingUpload = uploadModel.consumePendingUpload(
-            user.id,
-            payload.fileKey
-          );
-
-          if (!pendingUpload) {
+          try {
+            messagePayload = await buildVerifiedFileMessagePayload(user, payload);
+          } catch (error) {
             reply(callback, {
               ok: false,
-              error: "File chưa được upload hợp lệ hoặc đã hết hạn."
+              error: error.message || "File chưa upload xong hoặc metadata không khớp."
             });
             return;
           }
-
-          if (
-            pendingUpload.fileKey !== payload.fileKey ||
-            pendingUpload.fileName !== payload.fileName ||
-            pendingUpload.mimeType !== payload.mimeType ||
-            Number(pendingUpload.size) !== Number(payload.size)
-          ) {
-            reply(callback, {
-              ok: false,
-              error: "Metadata file không khớp với upload đã xác thực."
-            });
-            return;
-          }
-
-          if (
-            pendingUpload.kind === "voice" &&
-            Number(pendingUpload.durationMs) !== Number(payload.durationMs)
-          ) {
-            reply(callback, {
-              ok: false,
-              error: "Thời lượng voice không khớp với upload đã xác thực."
-            });
-            return;
-          }
-
-          messagePayload = {
-            type: pendingUpload.kind,
-            fileUrl: pendingUpload.fileUrl,
-            fileKey: pendingUpload.fileKey,
-            fileName: pendingUpload.fileName,
-            mimeType: pendingUpload.mimeType,
-            size: pendingUpload.size,
-            durationMs: pendingUpload.durationMs || null,
-            replyToMessageId: payload.replyToMessageId || null
-          };
         } else {
           reply(callback, {
             ok: false,
@@ -611,21 +573,32 @@ function registerSocketController(io) {
       }
 
       try {
-        const { messageId, emoji } = payload;
-        if (!messageId || !emoji) {
-          reply(callback, { ok: false, error: "Thiếu messageId hoặc emoji." });
+        const { messageId } = payload;
+        const reactionPayload = {
+          emoji: payload.emoji,
+          reactionType: payload.reactionType,
+          value: payload.value,
+          color: payload.color
+        };
+        if (!messageId || (!reactionPayload.emoji && !reactionPayload.value)) {
+          reply(callback, { ok: false, error: "Thiếu messageId hoặc reaction." });
           return;
         }
 
         const message = await messageService.addReaction(
           user.id,
           messageId,
-          emoji
+          reactionPayload
         );
+        const reactionType = reactionPayload.reactionType || (reactionPayload.emoji ? "emoji" : "icon");
+        const value = reactionPayload.value || reactionPayload.emoji;
         const outbound = {
           conversationId: message.conversationId,
           messageId: message.id,
-          emoji: emoji.trim(),
+          emoji: reactionType === "emoji" ? String(value || "").trim() : undefined,
+          reactionType,
+          value: String(value || "").trim(),
+          color: reactionType === "icon" ? reactionPayload.color || null : null,
           userId: user.id,
           reactions: message.reactions
         };
@@ -649,21 +622,32 @@ function registerSocketController(io) {
       }
 
       try {
-        const { messageId, emoji } = payload;
-        if (!messageId || !emoji) {
-          reply(callback, { ok: false, error: "Thiếu messageId hoặc emoji." });
+        const { messageId } = payload;
+        const reactionPayload = {
+          emoji: payload.emoji,
+          reactionType: payload.reactionType,
+          value: payload.value,
+          color: payload.color
+        };
+        if (!messageId || (!reactionPayload.emoji && !reactionPayload.value)) {
+          reply(callback, { ok: false, error: "Thiếu messageId hoặc reaction." });
           return;
         }
 
         const message = await messageService.removeReaction(
           user.id,
           messageId,
-          emoji
+          reactionPayload
         );
+        const reactionType = reactionPayload.reactionType || (reactionPayload.emoji ? "emoji" : "icon");
+        const value = reactionPayload.value || reactionPayload.emoji;
         const outbound = {
           conversationId: message.conversationId,
           messageId: message.id,
-          emoji: emoji.trim(),
+          emoji: reactionType === "emoji" ? String(value || "").trim() : undefined,
+          reactionType,
+          value: String(value || "").trim(),
+          color: reactionType === "icon" ? reactionPayload.color || null : null,
           userId: user.id,
           reactions: message.reactions
         };

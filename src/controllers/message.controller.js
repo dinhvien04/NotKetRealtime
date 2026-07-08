@@ -1,5 +1,6 @@
 const messageService = require("../services/message.service");
 const realtimeService = require("../services/realtime.service");
+const { normalizeReactionPayload } = require("../utils/icon");
 const { getDatabaseError } = require("../db");
 
 async function editMessage(req, res) {
@@ -60,10 +61,11 @@ async function addReaction(req, res) {
   }
 
   try {
+    const reaction = normalizeReactionPayload(req.body || {});
     const message = await messageService.addReaction(
       req.user.id,
       req.params.id,
-      req.body?.emoji,
+      reaction,
       req
     );
     await realtimeService.emitToConversation(
@@ -72,7 +74,10 @@ async function addReaction(req, res) {
       {
         conversationId: message.conversationId,
         messageId: message.id,
-        emoji: String(req.body?.emoji || "").trim(),
+        emoji: reaction.reactionType === "emoji" ? reaction.value : undefined,
+        reactionType: reaction.reactionType,
+        value: reaction.value,
+        color: reaction.color,
         userId: req.user.id,
         reactions: message.reactions
       }
@@ -93,10 +98,11 @@ async function removeReaction(req, res) {
   }
 
   try {
+    const reaction = normalizeReactionPayload(req.body || {});
     const message = await messageService.removeReaction(
       req.user.id,
       req.params.id,
-      req.body?.emoji
+      reaction
     );
     await realtimeService.emitToConversation(
       message.conversationId,
@@ -104,7 +110,10 @@ async function removeReaction(req, res) {
       {
         conversationId: message.conversationId,
         messageId: message.id,
-        emoji: String(req.body?.emoji || "").trim(),
+        emoji: reaction.reactionType === "emoji" ? reaction.value : undefined,
+        reactionType: reaction.reactionType,
+        value: reaction.value,
+        color: reaction.color,
         userId: req.user.id,
         reactions: message.reactions
       }

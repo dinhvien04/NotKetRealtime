@@ -1,6 +1,6 @@
 const profileService = require("../services/profile.service");
 const userRepository = require("../repositories/user.repository");
-const { getSupabaseError } = require("../services/supabase.service");
+const { getStorageConfigError } = require("../services/s3.service");
 const { uploadAvatar } = require("../services/storage.service");
 const { getDatabaseError } = require("../db");
 
@@ -48,7 +48,7 @@ async function uploadMyAvatar(req, res) {
     return res.status(503).json({ ok: false, error: dbError });
   }
 
-  const configError = getSupabaseError();
+  const configError = getStorageConfigError();
   if (configError) {
     return res.status(503).json({ ok: false, error: configError });
   }
