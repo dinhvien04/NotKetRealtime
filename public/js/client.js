@@ -1,5 +1,8 @@
 const page = document.body.dataset.page;
-const socket = page === "chat" ? io({ withCredentials: true }) : null;
+const socket = page === "chat" ? io({ 
+  withCredentials: true,
+  transports: ['polling', 'websocket'] // better compatibility on platforms like Vercel
+}) : null;
 
 const elements = {
   loginForm: document.getElementById("loginForm"),
@@ -159,7 +162,10 @@ if (typeof window !== "undefined") {
   window.socket = socket;
 }
 
- // api/ensure moved to api.js (window.api / window.ensureCsrfToken)
+// Make bare `api(...)` (and similar) work reliably across split modules
+const api = (typeof window !== "undefined" && window.api) || (typeof api !== "undefined" ? api : undefined);
+
+// api/ensure moved to api.js (window.api / window.ensureCsrfToken)
 function getInitials(name = "") {
   return (window.getInitials ? window.getInitials(name) : name.split(/\s+/).filter(Boolean).slice(-2).map(p => p.charAt(0).toUpperCase()).join(""));
 }
@@ -676,7 +682,8 @@ function createImageBubble(message) {
   image.addEventListener("error", async () => {
     if (message.fileKey) {
       try {
-        const freshUrl = await refreshMediaUrl(message.fileKey);
+        const refresh = window.refreshMediaUrl || refreshMediaUrl;
+        const freshUrl = await refresh(message.fileKey);
         message.fileUrl = freshUrl;
         image.src = freshUrl;
         link.href = freshUrl;
@@ -706,7 +713,8 @@ function createVoiceBubble(message) {
   audio.addEventListener("error", async () => {
     if (!message.fileKey) return;
     try {
-      const freshUrl = await refreshMediaUrl(message.fileKey);
+      const refresh = window.refreshMediaUrl || refreshMediaUrl;
+        const freshUrl = await refresh(message.fileKey);
       message.fileUrl = freshUrl;
       audio.src = freshUrl;
     } catch (_error) {
@@ -782,24 +790,6 @@ function clearSelectedFile() {
   state.selectedFile = null;
   if (elements.fileInput) elements.fileInput.value = "";
   elements.selectedFilePreview?.classList.add("is-hidden");
-}
-
-async function refreshMediaUrl(fileKey) {
-  const csrfToken = await ensureCsrfToken();
-  const response = await fetch("/api/uploads/refresh-url", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRF-Token": csrfToken
-    },
-    body: JSON.stringify({ fileKey })
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.ok || !data.fileUrl) {
-    throw new Error(data.error || "Không thể làm mới URL file.");
-  }
-  return data.fileUrl;
 }
 
 function setComposerDisabled(disabled) {
@@ -892,8 +882,8 @@ function switchSidebarTab(tab) {
     button?.setAttribute("aria-selected", name === tab ? "true" : "false");
     panel?.classList.toggle("is-hidden", name !== tab);
   }
-  if (tab === "ai") {
-    loadAiSessions();
+  if (tab === "ai" && window.loadAiSessions) {
+    window.loadAiSessions();
   }
 }
 
@@ -934,112 +924,6 @@ async function searchUsersDebounced() {
     );
   } catch (_error) {
     elements.userSearchResults.classList.add("is-hidden");
-  }
-}
-
-function renderAiSessions() {
-  if (!elements.aiSessionList) return;
-  elements.aiSessionList.replaceChildren();
-  for (const session of state.aiSessions) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "user-item";
-    if (state.chatMode === "ai" && state.aiSessionId === session.id) {
-      button.classList.add("is-active");
-    }
-    const avatar = document.createElement("span");
-    avatar.className = "avatar";
-    setAvatar(avatar, "AI");
-    const copy = document.createElement("span");
-    copy.className = "user-copy";
-    const name = document.createElement("strong");
-    name.textContent = session.title || "Cuộc trò chuyện AI";
-    copy.append(name);
-    button.append(avatar, copy);
-    button.addEventListener("click", () => selectAiSession(session.id));
-    elements.aiSessionList.append(button);
-  }
-}
-
-async function loadAiSessions() {
-  try {
-    const result = await api("/api/ai/sessions");
-    state.aiSessions = result.sessions || [];
-    renderAiSessions();
-  } catch (error) {
-    showToast(error.message, "error");
-  }
-}
-
-async function selectAiSession(sessionId) {
-  state.chatMode = "ai";
-  state.aiSessionId = sessionId;
-  state.selectedUser = null;
-  state.selectedConversationId = null;
-  clearSelectedFile();
-  hideSearchResults();
-  openChatPanel();
-  elements.selectedUsername.textContent = "AI Bot";
-  setAvatar(elements.selectedAvatar, "AI");
-  elements.selectedStatus.lastChild.textContent = "Trợ lý AI";
-  elements.conversationTypeChip.textContent = "AI";
-  elements.groupMembersButton?.classList.add("is-hidden");
-  elements.leaveGroupButton?.classList.add("is-hidden");
-  elements.attachButton.disabled = true;
-  elements.recordButton.disabled = true;
-  clearMessages();
-  renderAiSessions();
-  try {
-    const result = await api(`/api/ai/sessions/${sessionId}/messages`);
-    for (const message of result.messages || []) {
-      appendAiMessage(message);
-    }
-    elements.messageInput.disabled = false;
-    elements.sendButton.disabled = false;
-    elements.messageInput.focus();
-  } catch (error) {
-    showToast(error.message, "error");
-  }
-}
-
-async function createAiSession() {
-  try {
-    const result = await api("/api/ai/sessions", {
-      method: "POST",
-      body: JSON.stringify({ title: "Cuộc trò chuyện AI" })
-    });
-    state.aiSessions.unshift(result.session);
-    switchSidebarTab("ai");
-    await selectAiSession(result.session.id);
-  } catch (error) {
-    showToast(error.message, "error");
-  }
-}
-
-async function sendAiMessage(text) {
-  const showLoading = window.showAiLoadingBubble;
-  const loadingRow = showLoading ? showLoading() : null;
-  try {
-    const apiFn = window.api || api;
-    const apiCall = apiFn(`/api/ai/sessions/${state.aiSessionId}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ content: text })
-    });
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("AI phản hồi quá lâu. Vui lòng thử lại.")), 25000)
-    );
-    const result = await Promise.race([apiCall, timeout]);
-    if (loadingRow && loadingRow.parentNode) loadingRow.parentNode.removeChild(loadingRow);
-    // append only server returned (no optimistic user + server user dup)
-    const appendFn = window.appendAiMessage;
-    if (result.userMessage && appendFn) appendFn(result.userMessage);
-    if (result.assistantMessage && appendFn) appendFn(result.assistantMessage);
-    loadAiSessions();
-  } catch (error) {
-    if (loadingRow && loadingRow.parentNode) loadingRow.parentNode.removeChild(loadingRow);
-    const isTimeout = /quá lâu|timeout/i.test(error.message || "");
-    showToast(isTimeout ? "AI phản hồi quá lâu. Vui lòng thử lại." : (error.message || "Lỗi khi gọi AI."), "error");
-    throw error;
   }
 }
 
@@ -1111,44 +995,6 @@ function createPublicRoomItem() {
     button.append(badge);
   }
   button.addEventListener("click", () => selectPublicRoom());
-  return button;
-}
-
-function createGroupItem(group) {
-  const button = document.createElement("button");
-  const avatar = document.createElement("span");
-  const copy = document.createElement("span");
-  const name = document.createElement("strong");
-  const preview = document.createElement("span");
-  button.type = "button";
-  button.className = "user-item";
-  if (
-    state.chatMode === "group" &&
-    state.selectedConversationId === group.conversationId
-  ) {
-    button.classList.add("is-active");
-  }
-  avatar.className = "avatar";
-  renderConversationIcon(avatar, group, group.name || "G");
-  copy.className = "user-copy";
-  name.textContent = group.name || "Nhóm chat";
-  const last = group.lastMessage;
-  preview.textContent = last
-    ? last.type === "image"
-      ? "Đã gửi ảnh"
-      : last.type === "voice"
-        ? "Tin thoại"
-        : last.body || "Tin nhắn mới"
-    : "Bắt đầu trò chuyện nhóm";
-  copy.append(name, preview);
-  button.append(avatar, copy);
-  if (group.unreadCount > 0) {
-    const badge = document.createElement("span");
-    badge.className = "unread-badge";
-    badge.textContent = String(group.unreadCount);
-    button.append(badge);
-  }
-  button.addEventListener("click", () => selectGroup(group));
   return button;
 }
 
@@ -1233,7 +1079,7 @@ function renderSidebar() {
     ...(publicItem ? [publicItem] : [])
   );
   elements.groupList?.replaceChildren(
-    ...state.groups.map(createGroupItem)
+    ...(window.state.groups || []).map(g => window.createGroupItem ? window.createGroupItem(g) : null).filter(Boolean)
   );
 
   const totalVisible =
@@ -1290,22 +1136,7 @@ function selectPublicRoom() {
   loadMessages({ reset: true });
 }
 
-function selectGroup(group) {
-  state.chatMode = "group";
-  state.selectedUser = null;
-  state.activeConversation = group;
-  state.selectedConversationId = group.conversationId;
-  clearSelectedFile();
-  hideSearchResults();
-  openChatPanel();
-  renderConversationHeader();
-  clearMessages();
-  renderSidebar();
-  socket.emit("join_conversation", {
-    conversationId: state.selectedConversationId
-  });
-  loadMessages({ reset: true });
-}
+
 
 function startChatWithOnlineUser(user) {
   switchSidebarTab("direct");
@@ -1654,7 +1485,9 @@ async function handleMessageSubmit() {
     state.isUploading = true;
     setComposerDisabled(true);
     try {
-      await sendAiMessage(text);
+      if (window.sendAiMessage) {
+        await window.sendAiMessage(text);
+      }
       elements.messageInput.value = "";
     } catch (error) {
       showToast(error.message, "error");
@@ -1722,19 +1555,6 @@ async function handleMessageSubmit() {
     renderConversationHeader();
     setComposerDisabled(false);
   }
-}
-
-function openGroupModal() {
-  elements.groupError.textContent = "";
-  elements.groupNameInput.value = "";
-  elements.groupMembersInput.value = "";
-  state.selectedGroupIcon = { iconName: "lucide:users", color: "#22c55e" };
-  (window.renderGroupIconPreview || renderGroupIconPreview)();
-  elements.groupModal?.classList.remove("is-hidden");
-}
-
-function closeGroupModal() {
-  elements.groupModal?.classList.add("is-hidden");
 }
 
 function switchAuthTab(tab) {
@@ -1934,6 +1754,15 @@ if (page === "chat") {
     if (state.currentUser && !state.hasJoined) joinChat();
   });
 
+  if (page === "chat" && socket) {
+    socket.on("connect_error", (err) => {
+      console.error("Socket connect error (common on serverless like Vercel):", err.message);
+      if (typeof showToast === "function") {
+        showToast("Không kết nối được Realtime (Socket.IO). Một số tính năng (tin nhắn, online, typing) có thể không hoạt động. Thử hosting khác cho full realtime.", "error");
+      }
+    });
+  }
+
   elements.messageForm.addEventListener("submit", (event) => {
     event.preventDefault();
     handleMessageSubmit();
@@ -1955,7 +1784,9 @@ if (page === "chat") {
     state.userSearchTimer = window.setTimeout(searchUsersDebounced, 350);
   });
   elements.tabAi?.addEventListener("click", () => switchSidebarTab("ai"));
-  elements.newAiSessionButton?.addEventListener("click", createAiSession);
+  elements.newAiSessionButton?.addEventListener("click", () => {
+    if (window.createAiSession) window.createAiSession();
+  });
   elements.groupMembersButton?.addEventListener("click", openGroupMembersModal);
   elements.groupMembersCloseButton?.addEventListener("click", closeGroupMembersModal);
   elements.groupMembersModal?.addEventListener("click", (event) => {
@@ -2035,10 +1866,14 @@ if (page === "chat") {
   elements.tabOnline?.addEventListener("click", () => switchSidebarTab("online"));
   elements.tabPublic?.addEventListener("click", () => switchSidebarTab("public"));
   elements.tabGroups?.addEventListener("click", () => switchSidebarTab("groups"));
-  elements.createGroupButton?.addEventListener("click", openGroupModal);
-  elements.groupCloseButton?.addEventListener("click", closeGroupModal);
+  elements.createGroupButton?.addEventListener("click", () => {
+    if (window.openGroupModal) window.openGroupModal();
+  });
+  elements.groupCloseButton?.addEventListener("click", () => {
+    if (window.closeGroupModal) window.closeGroupModal();
+  });
   elements.groupIconButton?.addEventListener("click", () => {
-    createIconPicker({
+    if (window.createIconPicker) window.createIconPicker({
       selectedIconName: state.selectedGroupIcon.iconName,
       selectedColor: state.selectedGroupIcon.color,
       onSelect: ({ iconName, color }) => {
@@ -2091,10 +1926,10 @@ if (page === "chat") {
         body: JSON.stringify({ name, memberIds, iconName, iconColor })
       });
       closeGroupModal();
-      loadGroups();
+      if (window.loadGroups) window.loadGroups();
       switchSidebarTab("groups");
       if (result.group) {
-        selectGroup({
+        if (window.selectGroup) window.selectGroup({
           conversationId: result.group.id,
           name: result.group.name,
           iconName: result.group.iconName,
@@ -2362,7 +2197,7 @@ if (typeof window !== "undefined") {
   if (typeof renderConversationHeader === "function") w.renderConversationHeader = renderConversationHeader;
   if (typeof switchSidebarTab === "function") w.switchSidebarTab = switchSidebarTab;
   if (typeof selectConversation === "function") w.selectConversation = selectConversation;
-  if (typeof selectGroup === "function") w.selectGroup = selectGroup;
+  if (window.selectGroup) w.selectGroup = window.selectGroup;
   if (typeof selectPublicRoom === "function") w.selectPublicRoom = selectPublicRoom;
   if (typeof startChatWithOnlineUser === "function") w.startChatWithOnlineUser = startChatWithOnlineUser;
   if (typeof handleMessageSubmit === "function") w.handleMessageSubmit = handleMessageSubmit;
@@ -2373,12 +2208,12 @@ if (typeof window !== "undefined") {
   if (typeof renderSidebar === "function") w.renderSidebar = renderSidebar;
   if (typeof renderConversationList === "function") w.renderConversationList = renderConversationList;
   if (typeof openChatPanel === "function") w.openChatPanel = openChatPanel;
-  if (typeof loadGroups === "function") w.loadGroups = loadGroups;
+  if (window.loadGroups) w.loadGroups = window.loadGroups;
   if (typeof setConnectionVisible === "function") w.setConnectionVisible = setConnectionVisible;
   if (typeof renderSelectedFilePreview === "function") w.renderSelectedFilePreview = renderSelectedFilePreview;
   if (typeof clearSelectedFile === "function") w.clearSelectedFile = clearSelectedFile;
   if (typeof updateAdminLink === "function") w.updateAdminLink = updateAdminLink;
-  if (typeof selectAiSession === "function") w.selectAiSession = selectAiSession;
+  if (window.selectAiSession) w.selectAiSession = window.selectAiSession;
 
   // setup cross module listeners
   if (typeof w.setupSocketListeners === "function") {

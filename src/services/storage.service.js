@@ -260,17 +260,58 @@ async function verifyUploadedObjectContent({ fileKey, expectedMimeType, original
 
   const s3Client = getS3Client();
 
-  // Get first bytes (sufficient for magic detection) or full for small files
-  const MAX_CONTENT_BYTES = 2 * 1024 * 1024; // 2MB cap to avoid excessive memory
-  const getCommand = new GetObjectCommand({
+  // Head first for early size/kind limit reject (as per spec)
+  let head;
+  try {
+    head = await s3Client.send(new HeadObjectCommand({
+      Bucket: config.s3Bucket,
+      Key: fileKey
+    }));
+  } catch (error) {
+    if (error?.name === "NoSuchKey" || error?.$metadata?.httpStatusCode === 404) {
+      throw new Error("Object chưa tồn tại trên storage.");
+    }
+    throw new Error(error?.message || "Không thể xác minh object trên storage.");
+  }
+
+  const realSize = Number(head.ContentLength || 0);
+  if (realSize <= 0) {
+    throw new Error("File rỗng trên storage.");
+  }
+
+  const kind = getKindFromMimeType(expectedMimeType);
+  const maxBytes = getMaxBytesForKind(kind);
+  if (realSize > maxBytes) {
+    throw new Error(`File vượt quá giới hạn ${Math.round(maxBytes / 1024 / 1024)}MB.`);
+  }
+
+  // Decide fetch strategy per spec:
+  // - text/plain: full if <= MAX (already checked)
+  // - Office Open XML: full (yauzl needs central dir at EOF)
+  // - image/pdf/audio/generic: prefix ok, but full if small
+  const isTextPlain = expectedMimeType === "text/plain";
+  const isOffice = expectedMimeType === "application/msword" ||
+    expectedMimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    expectedMimeType === "application/vnd.ms-excel" ||
+    expectedMimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    expectedMimeType === "application/vnd.ms-powerpoint" ||
+    expectedMimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+  const fetchFull = isTextPlain || isOffice || realSize <= (1024 * 1024); // 1MB threshold for simplicity
+
+  const getParams = {
     Bucket: config.s3Bucket,
-    Key: fileKey,
-    Range: `bytes=0-${MAX_CONTENT_BYTES - 1}`
-  });
+    Key: fileKey
+  };
+  if (!fetchFull) {
+    // first bytes for magic detection (images, pdf, audio, etc.)
+    const prefixBytes = Math.min(8192, realSize);
+    getParams.Range = `bytes=0-${prefixBytes - 1}`;
+  }
 
   let buffer;
   try {
-    const response = await s3Client.send(getCommand);
+    const response = await s3Client.send(new GetObjectCommand(getParams));
     const chunks = [];
     for await (const chunk of response.Body) {
       chunks.push(chunk);
@@ -287,7 +328,7 @@ async function verifyUploadedObjectContent({ fileKey, expectedMimeType, original
     throw new Error("File rỗng trên storage.");
   }
 
-  // Reuse content validation (magic bytes, office, text, audio etc.)
+  // Reuse content validation
   await validateUploadedFile({
     buffer,
     declaredMimeType: expectedMimeType,

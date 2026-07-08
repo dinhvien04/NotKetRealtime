@@ -1,0 +1,1500 @@
+
+=== PHẦN 8 ===
+
+PHẦN 8  ADMIN DASHBOARD
+================================================================================
+
+8.1. Role system
+Users have role:
+- user
+- moderator
+- admin
+
+Middleware:
+- `requireAuth`
+- `requireRole('admin')`
+- `requireRole('moderator','admin')`
+
+Admin routes:
+- `/admin`
+- `/admin/users`
+- `/admin/messages`
+- `/admin/bad-words`
+- `/admin/audit-logs`
+- `/admin/stats`
+
+8.2. Admin API
+Stats:
+- GET `/api/admin/stats`
+  - total users
+  - active users
+  - locked users
+  - total messages
+  - messages today
+  - files uploaded
+  - storage used
+  - public/group/direct count
+
+Users:
+- GET `/api/admin/users?q=&status=&role=&page=`
+- PATCH `/api/admin/users/:id`
+  - role
+  - lock/unlock
+  - displayName maybe
+- DELETE `/api/admin/users/:id` soft-delete or deactivate
+- Do not allow admin to delete self accidentally.
+
+Messages:
+- GET `/api/admin/messages?q=&conversationId=&userId=&type=&page=`
+- DELETE `/api/admin/messages/:id`
+- PATCH `/api/admin/messages/:id` optional moderation edit
+
+Bad words:
+- GET `/api/admin/bad-words`
+- POST `/api/admin/bad-words`
+- DELETE `/api/admin/bad-words/:id`
+
+Audit:
+- GET `/api/admin/audit-logs`
+
+8.3. Audit logging
+Create `audit.service.js`.
+Log:
+- login success/fail maybe aggregate
+- logout
+- register
+- password reset request/complete
+- profile update
+- message delete/edit
+- admin lock/unlock user
+- admin bad word create/delete
+- admin message delete
+- upload rejected for security reason
+Fields:
+- actorId
+- actorRole
+- action
+- targetType
+- targetId
+- details
+- ip
+- userAgent
+
+8.4. Admin UI
+Use current HTML/CSS style.
+Add pages under `views/admin/*.html` or render via page controller.
+Do not use React.
+Responsive but desktop-first is fine.
+
+================================================================================
+PHẦN 9  FRONTEND UX FULL
+================================================================================
+
+9.1. Home/auth page
+- Login tab.
+- Register tab.
+- Forgot password link.
+- OTP flow:
+  1. Enter email.
+  2. Enter OTP.
+  3. Set new password.
+- Show loading state.
+- Show error messages cleanly.
+- Redirect to `/chat` if already logged in.
+
+9.2. Chat layout
+Sidebar sections:
+- Current user profile summary.
+- Search user/conversation.
+- Public room.
+- Conversations.
+- Online users.
+- Groups.
+- AI Bot.
+- Admin link if role admin/moderator.
+
+Chat header:
+- Avatar.
+- Name.
+- Online/last seen.
+- Conversation type.
+- Buttons:
+  - search
+  - settings/group members
+  - logout/profile
+
+Composer:
+- Text input.
+- Attach file.
+- Image upload.
+- Voice record.
+- Emoji/reaction picker optional.
+- Send button.
+- File preview.
+- Upload progress.
+- Error retry.
+
+Messages:
+- Text bubble.
+- Image bubble.
+- File card.
+- Voice audio player.
+- Reactions.
+- Edited label.
+- Deleted state.
+- Read status.
+- Timestamp.
+- Context menu:
+  - reply
+  - react
+  - edit own text
+  - delete own message
+  - admin delete if admin
+
+9.3. Profile page/modal
+- View username/email/display name/bio/avatar.
+- Update display name/bio.
+- Change avatar.
+- Change password.
+- Logout all sessions optional.
+
+9.4. Accessibility
+- Buttons have aria-label.
+- Forms have labels.
+- Keyboard usable.
+- Focus states visible.
+- Color contrast adequate.
+- Toast has role alert.
+
+================================================================================
+PHẦN 10  SECURITY HARDENING TOÀN DỰ ÁN
+================================================================================
+
+10.1. Express security
+- `helmet()` with CSP.
+- `app.disable("x-powered-by")`.
+- `app.set("trust proxy", 1)` for deployment.
+- JSON/urlencoded body limit small.
+- File upload route separate with strict limit.
+- Error handler:
+  - API returns JSON.
+  - No stack leak in production.
+- Use HTTPS in production.
+- Secure cookies in production.
+- HSTS through Helmet when behind HTTPS.
+- Rate limit:
+  - auth login/register
+  - forgot password
+  - upload
+  - AI
+  - message send if HTTP
+  - admin APIs
+
+10.2. Cookie/JWT
+- HttpOnly cookie.
+- SameSite=Lax.
+- Secure in production.
+- Path `/`.
+- JWT exp 7d default.
+- Validate JWT_SECRET strong.
+- Optional session version:
+  - user.password_changed_at invalidates old JWT.
+- Optional token revocation table for logout all sessions.
+
+10.3. CSRF
+- Add double-submit CSRF token.
+- Client fetch wrapper automatically adds `X-CSRF-Token`.
+- Unsafe API requires CSRF.
+- Admin routes require CSRF.
+
+10.4. Socket security
+- Auth middleware required.
+- Origin check.
+- Rate limit socket events per user/socket:
+  - message send
+  - typing
+  - load messages
+  - AI request
+- Payload schema validation.
+- Authorization on every event:
+  - participant check
+  - role check
+  - owner/admin check
+- Never trust receiverId when conversationId exists.
+- Do not expose all online user sensitive data.
+- Disconnect locked user if status changes.
+
+10.5. SQL security
+- Parameterized queries only.
+- No string interpolation with user input.
+- Repository layer only talks to DB.
+- Validate UUID inputs before query if useful.
+- Transactions for multi-s
+
+=== PHẦN 9 ===
+
+PHẦN 9  FRONTEND UX FULL
+================================================================================
+
+9.1. Home/auth page
+- Login tab.
+- Register tab.
+- Forgot password link.
+- OTP flow:
+  1. Enter email.
+  2. Enter OTP.
+  3. Set new password.
+- Show loading state.
+- Show error messages cleanly.
+- Redirect to `/chat` if already logged in.
+
+9.2. Chat layout
+Sidebar sections:
+- Current user profile summary.
+- Search user/conversation.
+- Public room.
+- Conversations.
+- Online users.
+- Groups.
+- AI Bot.
+- Admin link if role admin/moderator.
+
+Chat header:
+- Avatar.
+- Name.
+- Online/last seen.
+- Conversation type.
+- Buttons:
+  - search
+  - settings/group members
+  - logout/profile
+
+Composer:
+- Text input.
+- Attach file.
+- Image upload.
+- Voice record.
+- Emoji/reaction picker optional.
+- Send button.
+- File preview.
+- Upload progress.
+- Error retry.
+
+Messages:
+- Text bubble.
+- Image bubble.
+- File card.
+- Voice audio player.
+- Reactions.
+- Edited label.
+- Deleted state.
+- Read status.
+- Timestamp.
+- Context menu:
+  - reply
+  - react
+  - edit own text
+  - delete own message
+  - admin delete if admin
+
+9.3. Profile page/modal
+- View username/email/display name/bio/avatar.
+- Update display name/bio.
+- Change avatar.
+- Change password.
+- Logout all sessions optional.
+
+9.4. Accessibility
+- Buttons have aria-label.
+- Forms have labels.
+- Keyboard usable.
+- Focus states visible.
+- Color contrast adequate.
+- Toast has role alert.
+
+================================================================================
+PHẦN 10  SECURITY HARDENING TOÀN DỰ ÁN
+================================================================================
+
+10.1. Express security
+- `helmet()` with CSP.
+- `app.disable("x-powered-by")`.
+- `app.set("trust proxy", 1)` for deployment.
+- JSON/urlencoded body limit small.
+- File upload route separate with strict limit.
+- Error handler:
+  - API returns JSON.
+  - No stack leak in production.
+- Use HTTPS in production.
+- Secure cookies in production.
+- HSTS through Helmet when behind HTTPS.
+- Rate limit:
+  - auth login/register
+  - forgot password
+  - upload
+  - AI
+  - message send if HTTP
+  - admin APIs
+
+10.2. Cookie/JWT
+- HttpOnly cookie.
+- SameSite=Lax.
+- Secure in production.
+- Path `/`.
+- JWT exp 7d default.
+- Validate JWT_SECRET strong.
+- Optional session version:
+  - user.password_changed_at invalidates old JWT.
+- Optional token revocation table for logout all sessions.
+
+10.3. CSRF
+- Add double-submit CSRF token.
+- Client fetch wrapper automatically adds `X-CSRF-Token`.
+- Unsafe API requires CSRF.
+- Admin routes require CSRF.
+
+10.4. Socket security
+- Auth middleware required.
+- Origin check.
+- Rate limit socket events per user/socket:
+  - message send
+  - typing
+  - load messages
+  - AI request
+- Payload schema validation.
+- Authorization on every event:
+  - participant check
+  - role check
+  - owner/admin check
+- Never trust receiverId when conversationId exists.
+- Do not expose all online user sensitive data.
+- Disconnect locked user if status changes.
+
+10.5. SQL security
+- Parameterized queries only.
+- No string interpolation with user input.
+- Repository layer only talks to DB.
+- Validate UUID inputs before query if useful.
+- Transactions for multi-step writes.
+- Use `ON CONFLICT` safely.
+- Add DB constraints for integrity.
+
+10.6. XSS
+- Client uses `textContent`.
+- Never render user HTML.
+- Sanitize displayName/bio server side.
+- CSP restricts scripts to self.
+- Do not allow SVG upload.
+- Uploaded files should not be served from same app origin if possible.
+- If public storage, ensure files are on Supabase domain, not app domain.
+
+10.7. File upload security
+- Auth required.
+- CSRF required.
+- Allowlist extension.
+- Allowlist MIME.
+- Magic-byte validation.
+- Random generated filename.
+- Filename length/character limit.
+- Size limit.
+- No executable/script formats.
+- Store outside app webroot: Supabase Storage.
+- Optional malware scanning hook.
+- Private bucket + signed URL for production.
+- Rate limit downloads or signed URL creation.
+- Abuse report path.
+
+10.8. Admin security
+- Admin pages require role.
+- Admin APIs require role.
+- Audit all admin actions.
+- Prevent self-lock/delete.
+- Step-up auth optional for destructive actions.
+- Do not show secrets in admin UI.
+
+10.9. Logging
+- Do not log passwords, JWT, cookies, Supabase keys, DATABASE_URL.
+- Log request id, status, duration.
+- Log security rejections with reason but no secret.
+- Production logs structured JSON optional.
+
+10.10. Dependencies
+- Run `npm audit`.
+- Remove unused dependencies.
+- Pin major versions.
+- Add GitHub Actions CI:
+  - npm ci
+  - npm run check
+  - npm test
+  - npm audit --audit-level=high optional
+
+================================================================================
+PHẦN 11  PERFORMANCE / OPTIMIZATION
+================================================================================
+
+11.1. Database
+- Use `pg` Pool.
+- Runtime `DATABASE_URL` should be pooled Neon URL.
+- Migration `MIGRATION_DATABASE_URL` should
+
+=== PHẦN 10 ===
+
+PHẦN 10  SECURITY HARDENING TOÀN DỰ ÁN
+================================================================================
+
+10.1. Express security
+- `helmet()` with CSP.
+- `app.disable("x-powered-by")`.
+- `app.set("trust proxy", 1)` for deployment.
+- JSON/urlencoded body limit small.
+- File upload route separate with strict limit.
+- Error handler:
+  - API returns JSON.
+  - No stack leak in production.
+- Use HTTPS in production.
+- Secure cookies in production.
+- HSTS through Helmet when behind HTTPS.
+- Rate limit:
+  - auth login/register
+  - forgot password
+  - upload
+  - AI
+  - message send if HTTP
+  - admin APIs
+
+10.2. Cookie/JWT
+- HttpOnly cookie.
+- SameSite=Lax.
+- Secure in production.
+- Path `/`.
+- JWT exp 7d default.
+- Validate JWT_SECRET strong.
+- Optional session version:
+  - user.password_changed_at invalidates old JWT.
+- Optional token revocation table for logout all sessions.
+
+10.3. CSRF
+- Add double-submit CSRF token.
+- Client fetch wrapper automatically adds `X-CSRF-Token`.
+- Unsafe API requires CSRF.
+- Admin routes require CSRF.
+
+10.4. Socket security
+- Auth middleware required.
+- Origin check.
+- Rate limit socket events per user/socket:
+  - message send
+  - typing
+  - load messages
+  - AI request
+- Payload schema validation.
+- Authorization on every event:
+  - participant check
+  - role check
+  - owner/admin check
+- Never trust receiverId when conversationId exists.
+- Do not expose all online user sensitive data.
+- Disconnect locked user if status changes.
+
+10.5. SQL security
+- Parameterized queries only.
+- No string interpolation with user input.
+- Repository layer only talks to DB.
+- Validate UUID inputs before query if useful.
+- Transactions for multi-step writes.
+- Use `ON CONFLICT` safely.
+- Add DB constraints for integrity.
+
+10.6. XSS
+- Client uses `textContent`.
+- Never render user HTML.
+- Sanitize displayName/bio server side.
+- CSP restricts scripts to self.
+- Do not allow SVG upload.
+- Uploaded files should not be served from same app origin if possible.
+- If public storage, ensure files are on Supabase domain, not app domain.
+
+10.7. File upload security
+- Auth required.
+- CSRF required.
+- Allowlist extension.
+- Allowlist MIME.
+- Magic-byte validation.
+- Random generated filename.
+- Filename length/character limit.
+- Size limit.
+- No executable/script formats.
+- Store outside app webroot: Supabase Storage.
+- Optional malware scanning hook.
+- Private bucket + signed URL for production.
+- Rate limit downloads or signed URL creation.
+- Abuse report path.
+
+10.8. Admin security
+- Admin pages require role.
+- Admin APIs require role.
+- Audit all admin actions.
+- Prevent self-lock/delete.
+- Step-up auth optional for destructive actions.
+- Do not show secrets in admin UI.
+
+10.9. Logging
+- Do not log passwords, JWT, cookies, Supabase keys, DATABASE_URL.
+- Log request id, status, duration.
+- Log security rejections with reason but no secret.
+- Production logs structured JSON optional.
+
+10.10. Dependencies
+- Run `npm audit`.
+- Remove unused dependencies.
+- Pin major versions.
+- Add GitHub Actions CI:
+  - npm ci
+  - npm run check
+  - npm test
+  - npm audit --audit-level=high optional
+
+================================================================================
+PHẦN 11  PERFORMANCE / OPTIMIZATION
+================================================================================
+
+11.1. Database
+- Use `pg` Pool.
+- Runtime `DATABASE_URL` should be pooled Neon URL.
+- Migration `MIGRATION_DATABASE_URL` should be direct URL if available.
+- Index hot queries.
+- Use cursor pagination for messages.
+- Avoid loading all messages.
+- Avoid N+1 queries in conversation list.
+- Use `LEFT JOIN LATERAL` carefully and index.
+- Add query timeout if possible.
+- Keep pool max reasonable, e.g. 10.
+
+11.2. Socket.IO
+- Debounce typing events client side.
+- Rate limit message events.
+- Room per user: `user:${id}`.
+- Room per conversation optional: `conversation:${id}`.
+- For scale:
+  - Add Redis adapter optional.
+  - Presence should move from memory to Redis.
+  - Typing/presence TTL in Redis.
+- Add health route `/health`.
+
+11.3. Frontend
+- Do not re-render entire message list on each new message.
+- Deduplicate message by id.
+- Virtualize messages later if very long.
+- Lazy load images.
+- Use thumbnails.
+- Object URL preview should be revoked after use.
+- Keep CSS static.
+- Avoid big client bundle.
+
+11.4. Upload
+- Keep max upload 6MB default.
+- For larger uploads later, use resumable upload/TUS.
+- Compress image optional.
+- Generate thumbnails.
+- Use signed URLs cached until expiry.
+- Do not proxy downloads through Node unless access control requires it.
+
+11.5. AI
+- Rate limit per user.
+- Limit prompt length.
+- Store AI sessions.
+- Do not send full chat history blindly; cap context.
+- Add timeout for AI provider calls.
+- Retry only safe transient errors.
+
+================================================================================
+PHẦN 12  TESTING
+============================================================================
+
+=== bad-word ===
+
+bad-word filtering, audit log, profile, đổi mật khẩu, quên mật khẩu OTP, edit/delete message, read receipt, search, reactions, lưu lịch sử bền vững trên Neon Postgres, lưu file trên Supabase Storage, bảo mật đúng chuẩn, tối ưu hiệu năng, test đầy đủ, README cập nhật.
+
+Bối cảnh hiện tại của repo:
+- Backend: Node.js, Express, Socket.IO, CommonJS.
+- Frontend: HTML/CSS/JavaScript thuần trong `views/` và `public/`.
+- DB hiện tại: Neon Postgres qua `pg`.
+- File storage: Supabase Storage.
+- Auth hiện tại: Argon2id + JWT HttpOnly cookie.
+- Socket hiện tại: có middleware auth qua JWT.
+- Upload hiện tại: Multer memoryStorage, Supabase Storage, pending upload registry.
+- Không được chuyển sang React, Next.js, NestJS, TypeScript bắt buộc, hay rewrite toàn bộ app nếu không cần.
+- Được refactor mạnh theo module/layer sạch, nhưng giữ app dễ học, dễ chạy, dễ bảo trì.
+
+Nguyên tắc làm việc:
+1. Trước khi sửa, inspect toàn bộ repo:
+   - `package.json`
+   - `server.js`
+   - `src/app.js`
+   - `src/config/env.js`
+   - `src/db/*`
+   - `migrations/*`
+   - `src/repositories/*`
+   - `src/models/*`
+   - `src/controllers/*`
+   - `src/routes/*`
+   - `src/middlewares/*`
+   - `src/services/*`
+   - `views/*`
+   - `public/js/client.js`
+   - `public/css/style.css`
+   - `tests/*`
+   - `README.md`
+2. Không xóa tính năng đang chạy nếu không thay bằng bản tốt hơn.
+3. Không hard-code secret.
+4. Không commit `.env`.
+5. Không đưa secret key ra frontend.
+6. Không gửi binary qua Socket.IO.
+7. Không lưu file vào local disk lâu dài.
+8. Không lưu binary vào database.
+9. Không dùng `innerHTML` với dữ liệu user.
+10. Server là source of truth; không tin dữ liệu từ client.
+11. Tất cả API/socket event thay đổi dữ liệu phải validate auth + authorization.
+12. Mọi thay đổi phải có test hoặc ít nhất cập nhật test hiện có.
+13. Sau mỗi phase phải chạy `npm run check` và `npm test`.
+
+================================================================================
+PHẦN 1  FIX NGAY CÁC LỖI BẢO MẬT / DATA-INTEGRITY HIỆN TẠI
+================================================================================
+
+1.1. Sửa authorization của `private_message`
+Hiện socket event `private_message` có thể nhận cả `conversationId` và `receiverId`. Nếu client cố tình gửi `conversationId` của cuộc A-B nhưng `receiverId` là C, server không được emit message tới C.
+
+Yêu cầu sửa:
+- Nếu payload có `conversationId`:
+  - Check user hiện tại là participant của conversation.
+  - Lấy receiver thật bằng `conversationRepository.getOtherParticipant(conversationId, currentUser.id)`.
+  - Không tin `receiverId` từ client.
+  - Nếu client có gửi `receiverId` thì verify nó trùng với receiver thật.
+  - Nếu không trùng, reject `{ ok:false, error:"Người nhận không thuộc hội thoại này." }`.
+  - Emit message tới `user:${otherParticipant.id}`.
+- Nếu payload không có `conversationId`:
+  - Require `receiverId`.
+  - Verify receiver tồn tại.
+  - Tạo hoặc reuse direct conversation bằng `findOrCreateDirectConversation(senderId, receiverId)`.
+- Không bao giờ lấy senderId từ client. Sender luôn là `socket.data.user.id`.
+
+1.2. Sửa `mark_read`
+Hiện `mark_read` chỉ check user là participant rồi update `last_read_message_id`.
+Yêu cầu:
+- Check `conversationId` tồn tại.
+- Check user hiện tại là participant.
+- Check `messageId` tồn tại.
+- Check message đó thuộc đúng `conversationId`.
+- Không cho mark read message của conversation khác.
+- Nếu message không thuộc conversation, reject.
+- Thêm test cho case cố tình mark read message của conversation khác.
+
+1.3. Chống race condition khi tạo direct conversation
+Hiện có bảng `direct_conversations` với unique `(user_low, user_high)`, nhưng application logic có thể race khi 2 request tạo cùng lúc.
+
+Yêu cầu:
+- Refactor `findOrCreateDirectConversation(userA, userB)`:
+  - Chuẩn hóa `userLow`, `userHigh`.
+  - Dùng transaction.
+  - Dùng `INSERT ... ON CONFLICT (user_low, user_high) DO NOTHING RETURNING conversation_id`
+  - Nếu conflict xảy ra, SELECT lại conversation_id.
+  - Không để concurrent request crash.
+- Thêm test hoặc service-level test cho duplicate/reuse direct conversation.
+
+1.4. Sửa upload không phụ thuộc presence
+Hiện `/api/uploads` đang bắt buộc `presenceModel.isOnline(sender.id)`.
+Yêu cầu:
+- Upload chỉ cần user đã login qua `requireAuth`.
+- Không phụ thuộc socket online.
+- Pending upload vẫn gắn theo `userId`.
+- Khi socket gửi file message, mới consume pending upload.
+- Nếu pending upload hết hạn hoặc không thuộc user, reject.
+
+1.5. Thêm magic-byte validation cho upload
+Hiện code chỉ tin `req.file.mimetype`. MIME từ client có thể fake.
+
+Yêu cầu:
+- Cài `file-type`.
+- Với file upload:
+  - Kiểm MIME từ Multer để reject sớm.
+  - Kiểm magic bytes bằng `file-type` với buffer.
+  - Với text/plain, có thể fallback kiểm buffer text an toàn.
+  - Với doc/docx/xls/xlsx/ppt/pptx/pdf/image, verify file signature hợp lý nếu package hỗ trợ.
+  - Nếu magic type không khớp allowlist thì reject.
+- Không cho upload `.html`, `.svg`, `.js`, `.exe`, `.sh`, `.bat`, `.cmd`, `.php`, `.zip` trong bản 
+
+=== bad_word ===
+
+bad_words (lower(word))`
+- `password_reset_tokens (email, expires_at desc)`
+- `attachments (file_key)`
+- full-text index cho message search:
+  - `to_tsvector('simple', coalesce(body,''))`
+  - hoặc dùng trigram extension nếu cần search tiếng Việt đơn giản.
+
+2.4. Migration runner
+- Thêm bảng `schema_migrations`.
+- `npm run db:migrate` chạy các migration chưa chạy.
+- Hỗ trợ `MIGRATION_DATABASE_URL`, fallback `DATABASE_URL`.
+- Runtime dùng pooled Neon URL.
+- Migration ưu tiên direct Neon URL.
+- Thêm `npm run db:status`.
+
+================================================================================
+PHẦN 3  AUTH, ACCOUNT, PROFILE, PASSWORD RESET OTP
+================================================================================
+
+3.1. Auth hiện có
+Giữ:
+- register
+- login
+- logout
+- me
+- JWT HttpOnly cookie
+- Argon2id
+
+Cải thiện:
+- rate limit login/register theo IP + username/email.
+- Không tiết lộ username/email tồn tại ở forgot password.
+- Chuẩn hóa error message login.
+- Cập nhật `last_seen_at` và `updated_at`.
+
+3.2. Register
+API:
+- POST `/api/auth/register`
+
+Validation:
+- username 3-40 ký tự.
+- Cho phép chữ, số, gạch dưới, khoảng trắng đơn nếu muốn.
+- Không cho HTML/tag.
+- email optional nhưng nếu có phải đúng format.
+- password tối thiểu 8 ký tự, tối đa 128 ký tự.
+- confirm password phải trùng.
+- Check duplicate username/email case-insensitive.
+
+3.3. Login
+API:
+- POST `/api/auth/login`
+- body: usernameOrEmail, password.
+- Nếu account `is_locked` hoặc `status != active`, reject.
+- Khi login thành công:
+  - set cookie auth.
+  - rotate session token nếu sau này có session table.
+  - audit log action `auth.login`.
+
+3.4. Logout
+API:
+- POST `/api/auth/logout`
+- Require CSRF.
+- Clear cookie.
+- Audit log `auth.logout`.
+
+3.5. Profile
+APIs:
+- GET `/api/users/me`
+- PATCH `/api/users/me`
+- POST `/api/users/me/avatar`
+- POST `/api/users/me/change-password`
+
+Profile fields:
+- displayName
+- bio
+- avatarUrl
+- email
+
+Rules:
+- User chỉ sửa profile của chính mình.
+- Avatar upload dùng Supabase Storage, kind image only.
+- Change password require old password.
+- Change password hash Argon2id params chuẩn.
+- Sau change password update `password_changed_at`.
+- Có thể invalidate old tokens bằng cách check `iat > password_changed_at`.
+
+3.6. Forgot password OTP
+APIs:
+- POST `/api/auth/forgot-password`
+- POST `/api/auth/verify-reset-otp`
+- POST `/api/auth/reset-password`
+
+Flow:
+1. User nhập email.
+2. Server luôn trả message chung: Nếu email tồn tại, mã OTP đã được gửi.
+3. Nếu email tồn tại:
+   - Generate OTP 6 chữ số.
+   - Hash OTP bằng HMAC/Argon2 hoặc SHA256 + secret pepper.
+   - Store hash, expires 10 phút.
+   - Rate limit request theo IP/email.
+   - Send email qua SMTP/Nodemailer.
+4. Verify OTP:
+   - So sánh hash.
+   - Không cho brute force quá 5 lần.
+5. Reset password:
+   - Require verified reset token.
+   - Set new password.
+   - Mark token used.
+   - Audit log.
+   - Clear old login sessions nếu có.
+
+Env thêm:
+- SMTP_HOST
+- SMTP_PORT
+- SMTP_USER
+- SMTP_PASS
+- SMTP_FROM
+- APP_BASE_URL
+- PASSWORD_RESET_OTP_TTL_MINUTES=10
+
+================================================================================
+PHẦN 4  CHAT 1-1, PUBLIC CHAT, GROUP CHAT, HISTORY, READ RECEIPT
+================================================================================
+
+4.1. Chat 1-1
+Giữ và hoàn thiện:
+- Load conversations.
+- Start chat with online/offline user.
+- Find or create direct conversation.
+- Text message.
+- Image/file/voice message.
+- History pagination.
+- Typing indicator.
+- Read receipt.
+- Unread count thật.
+
+Socket events:
+- `join_chat`
+- `load_conversations`
+- `start_direct_conversation`
+- `load_messages`
+- `private_message` hoặc đổi tên thành `send_message`
+- `typing`
+- `stop_typing`
+- `mark_read`
+- `message_read`
+- `message_deleted`
+- `message_edited`
+- `message_reaction_added`
+- `message_reaction_removed`
+
+4.2. Public chat room
+Tạo conversation type `public`.
+
+Yêu cầu:
+- Có phòng public mặc định Phòng trò chuyện.
+- Tất cả user logged-in có thể xem/gửi.
+- Admin có thể clear/pin/delete message.
+- Bad-word filter áp dụng.
+- Rate limit gửi message public chặt hơn direct.
+
+UI:
+- Sidebar có tab:
+  - Hội thoại
+  - Online
+  - Phòng chung
+  - AI Bot
+- Public room hiển thị message realtime của mọi người.
+- Có badge unread khi user không mở public room.
+
+4.3. Group chat
+APIs/socket:
+- POST `/api/conversations/groups`
+- PATCH `/api/conversations/:id`
+- POST `/api/conversations/:id/participants`
+- DELETE `/api/conversations/:id/participants/:userId`
+- Socket `group_message`
+
+Rules:
+- Owner/admin group được add/remove member.
+- Member được rời nhóm.
+- Không cho user ngoài group load messages.
+- Group name required.
+- Group avatar optional.
+- Direct conversation không bị lẫn group.
+- Read receipt per participant.
+
+4.4. History pagination
+- `load_messages` nhận:
+  - conversationId
+  - cursor
+  - limit 30 default, max 100
+- Return:
+  - messages ascending for render
+  - nextCursor
+  - hasMore
+- Client:
+  - Load older khi scroll top.
+  - Không duplicate m
+
+=== ADMIN ===
+
+ADMIN DASHBOARD
+================================================================================
+
+8.1. Role system
+Users have role:
+- user
+- moderator
+- admin
+
+Middleware:
+- `requireAuth`
+- `requireRole('admin')`
+- `requireRole('moderator','admin')`
+
+Admin routes:
+- `/admin`
+- `/admin/users`
+- `/admin/messages`
+- `/admin/bad-words`
+- `/admin/audit-logs`
+- `/admin/stats`
+
+8.2. Admin API
+Stats:
+- GET `/api/admin/stats`
+  - total users
+  - active users
+  - locked users
+  - total messages
+  - messages today
+  - files uploaded
+  - storage used
+  - public/group/direct count
+
+Users:
+- GET `/api/admin/users?q=&status=&role=&page=`
+- PATCH `/api/admin/users/:id`
+  - role
+  - lock/unlock
+  - displayName maybe
+- DELETE `/api/admin/users/:id` soft-delete or deactivate
+- Do not allow admin to delete self accidentally.
+
+Messages:
+- GET `/api/admin/messages?q=&conversationId=&userId=&type=&page=`
+- DELETE `/api/admin/messages/:id`
+- PATCH `/api/admin/messages/:id` optional moderation edit
+
+Bad words:
+- GET `/api/admin/bad-words`
+- POST `/api/admin/bad-words`
+- DELETE `/api/admin/bad-words/:id`
+
+Audit:
+- GET `/api/admin/audit-logs`
+
+8.3. Audit logging
+Create `audit.service.js`.
+Log:
+- login success/fail maybe aggregate
+- logout
+- register
+- password reset request/complete
+- profile update
+- message delete/edit
+- admin lock/unlock user
+- admin bad word create/delete
+- admin message delete
+- upload rejected for security reason
+Fields:
+- actorId
+- actorRole
+- action
+- targetType
+- targetId
+- details
+- ip
+- userAgent
+
+8.4. Admin UI
+Use current HTML/CSS style.
+Add pages under `views/admin/*.html` or render via page controller.
+Do not use React.
+Responsive but desktop-first is fine.
+
+================================================================================
+PHẦN 9  FRONTEND UX FULL
+================================================================================
+
+9.1. Home/auth page
+- Login tab.
+- Register tab.
+- Forgot password link.
+- OTP flow:
+  1. Enter email.
+  2. Enter OTP.
+  3. Set new password.
+- Show loading state.
+- Show error messages cleanly.
+- Redirect to `/chat` if already logged in.
+
+9.2. Chat layout
+Sidebar sections:
+- Current user profile summary.
+- Search user/conversation.
+- Public room.
+- Conversations.
+- Online users.
+- Groups.
+- AI Bot.
+- Admin link if role admin/moderator.
+
+Chat header:
+- Avatar.
+- Name.
+- Online/last seen.
+- Conversation type.
+- Buttons:
+  - search
+  - settings/group members
+  - logout/profile
+
+Composer:
+- Text input.
+- Attach file.
+- Image upload.
+- Voice record.
+- Emoji/reaction picker optional.
+- Send button.
+- File preview.
+- Upload progress.
+- Error retry.
+
+Messages:
+- Text bubble.
+- Image bubble.
+- File card.
+- Voice audio player.
+- Reactions.
+- Edited label.
+- Deleted state.
+- Read status.
+- Timestamp.
+- Context menu:
+  - reply
+  - react
+  - edit own text
+  - delete own message
+  - admin delete if admin
+
+9.3. Profile page/modal
+- View username/email/display name/bio/avatar.
+- Update display name/bio.
+- Change avatar.
+- Change password.
+- Logout all sessions optional.
+
+9.4. Accessibility
+- Buttons have aria-label.
+- Forms have labels.
+- Keyboard usable.
+- Focus states visible.
+- Color contrast adequate.
+- Toast has role alert.
+
+================================================================================
+PHẦN 10  SECURITY HARDENING TOÀN DỰ ÁN
+================================================================================
+
+10.1. Express security
+- `helmet()` with CSP.
+- `app.disable("x-powered-by")`.
+- `app.set("trust proxy", 1)` for deployment.
+- JSON/urlencoded body limit small.
+- File upload route separate with strict limit.
+- Error handler:
+  - API returns JSON.
+  - No stack leak in production.
+- Use HTTPS in production.
+- Secure cookies in production.
+- HSTS through Helmet when behind HTTPS.
+- Rate limit:
+  - auth login/register
+  - forgot password
+  - upload
+  - AI
+  - message send if HTTP
+  - admin APIs
+
+10.2. Cookie/JWT
+- HttpOnly cookie.
+- SameSite=Lax.
+- Secure in production.
+- Path `/`.
+- JWT exp 7d default.
+- Validate JWT_SECRET strong.
+- Optional session version:
+  - user.password_changed_at invalidates old JWT.
+- Optional token revocation table for logout all sessions.
+
+10.3. CSRF
+- Add double-submit CSRF token.
+- Client fetch wrapper automatically adds `X-CSRF-Token`.
+- Unsafe API requires CSRF.
+- Admin routes require CSRF.
+
+10.4. Socket security
+- Auth middleware required.
+- Origin check.
+- Rate limit socket events per user/socket:
+  - message send
+  - typing
+  - load messages
+  - AI request
+- Payload schema validation.
+- Authorization on every event:
+  - participant check
+  - role check
+  - owner/admin check
+- Never trust receiverId when conversationId exists.
+- Do not expose all online user sensitive data.
+- Disconnect locked user if status changes.
+
+10.5. SQL security
+- Parameterized queries only.
+- No string interpolation with user input.
+- Repository layer only talks to DB.
+- Validate UUID inputs before query if useful.
+- Transactions for multi-step writ
+
+=== admin dashboard ===
+
+admin dashboard, bad-word filtering, audit log, profile, đổi mật khẩu, quên mật khẩu OTP, edit/delete message, read receipt, search, reactions, lưu lịch sử bền vững trên Neon Postgres, lưu file trên Supabase Storage, bảo mật đúng chuẩn, tối ưu hiệu năng, test đầy đủ, README cập nhật.
+
+Bối cảnh hiện tại của repo:
+- Backend: Node.js, Express, Socket.IO, CommonJS.
+- Frontend: HTML/CSS/JavaScript thuần trong `views/` và `public/`.
+- DB hiện tại: Neon Postgres qua `pg`.
+- File storage: Supabase Storage.
+- Auth hiện tại: Argon2id + JWT HttpOnly cookie.
+- Socket hiện tại: có middleware auth qua JWT.
+- Upload hiện tại: Multer memoryStorage, Supabase Storage, pending upload registry.
+- Không được chuyển sang React, Next.js, NestJS, TypeScript bắt buộc, hay rewrite toàn bộ app nếu không cần.
+- Được refactor mạnh theo module/layer sạch, nhưng giữ app dễ học, dễ chạy, dễ bảo trì.
+
+Nguyên tắc làm việc:
+1. Trước khi sửa, inspect toàn bộ repo:
+   - `package.json`
+   - `server.js`
+   - `src/app.js`
+   - `src/config/env.js`
+   - `src/db/*`
+   - `migrations/*`
+   - `src/repositories/*`
+   - `src/models/*`
+   - `src/controllers/*`
+   - `src/routes/*`
+   - `src/middlewares/*`
+   - `src/services/*`
+   - `views/*`
+   - `public/js/client.js`
+   - `public/css/style.css`
+   - `tests/*`
+   - `README.md`
+2. Không xóa tính năng đang chạy nếu không thay bằng bản tốt hơn.
+3. Không hard-code secret.
+4. Không commit `.env`.
+5. Không đưa secret key ra frontend.
+6. Không gửi binary qua Socket.IO.
+7. Không lưu file vào local disk lâu dài.
+8. Không lưu binary vào database.
+9. Không dùng `innerHTML` với dữ liệu user.
+10. Server là source of truth; không tin dữ liệu từ client.
+11. Tất cả API/socket event thay đổi dữ liệu phải validate auth + authorization.
+12. Mọi thay đổi phải có test hoặc ít nhất cập nhật test hiện có.
+13. Sau mỗi phase phải chạy `npm run check` và `npm test`.
+
+================================================================================
+PHẦN 1  FIX NGAY CÁC LỖI BẢO MẬT / DATA-INTEGRITY HIỆN TẠI
+================================================================================
+
+1.1. Sửa authorization của `private_message`
+Hiện socket event `private_message` có thể nhận cả `conversationId` và `receiverId`. Nếu client cố tình gửi `conversationId` của cuộc A-B nhưng `receiverId` là C, server không được emit message tới C.
+
+Yêu cầu sửa:
+- Nếu payload có `conversationId`:
+  - Check user hiện tại là participant của conversation.
+  - Lấy receiver thật bằng `conversationRepository.getOtherParticipant(conversationId, currentUser.id)`.
+  - Không tin `receiverId` từ client.
+  - Nếu client có gửi `receiverId` thì verify nó trùng với receiver thật.
+  - Nếu không trùng, reject `{ ok:false, error:"Người nhận không thuộc hội thoại này." }`.
+  - Emit message tới `user:${otherParticipant.id}`.
+- Nếu payload không có `conversationId`:
+  - Require `receiverId`.
+  - Verify receiver tồn tại.
+  - Tạo hoặc reuse direct conversation bằng `findOrCreateDirectConversation(senderId, receiverId)`.
+- Không bao giờ lấy senderId từ client. Sender luôn là `socket.data.user.id`.
+
+1.2. Sửa `mark_read`
+Hiện `mark_read` chỉ check user là participant rồi update `last_read_message_id`.
+Yêu cầu:
+- Check `conversationId` tồn tại.
+- Check user hiện tại là participant.
+- Check `messageId` tồn tại.
+- Check message đó thuộc đúng `conversationId`.
+- Không cho mark read message của conversation khác.
+- Nếu message không thuộc conversation, reject.
+- Thêm test cho case cố tình mark read message của conversation khác.
+
+1.3. Chống race condition khi tạo direct conversation
+Hiện có bảng `direct_conversations` với unique `(user_low, user_high)`, nhưng application logic có thể race khi 2 request tạo cùng lúc.
+
+Yêu cầu:
+- Refactor `findOrCreateDirectConversation(userA, userB)`:
+  - Chuẩn hóa `userLow`, `userHigh`.
+  - Dùng transaction.
+  - Dùng `INSERT ... ON CONFLICT (user_low, user_high) DO NOTHING RETURNING conversation_id`
+  - Nếu conflict xảy ra, SELECT lại conversation_id.
+  - Không để concurrent request crash.
+- Thêm test hoặc service-level test cho duplicate/reuse direct conversation.
+
+1.4. Sửa upload không phụ thuộc presence
+Hiện `/api/uploads` đang bắt buộc `presenceModel.isOnline(sender.id)`.
+Yêu cầu:
+- Upload chỉ cần user đã login qua `requireAuth`.
+- Không phụ thuộc socket online.
+- Pending upload vẫn gắn theo `userId`.
+- Khi socket gửi file message, mới consume pending upload.
+- Nếu pending upload hết hạn hoặc không thuộc user, reject.
+
+1.5. Thêm magic-byte validation cho upload
+Hiện code chỉ tin `req.file.mimetype`. MIME từ client có thể fake.
+
+Yêu cầu:
+- Cài `file-type`.
+- Với file upload:
+  - Kiểm MIME từ Multer để reject sớm.
+  - Kiểm magic bytes bằng `file-type` với buffer.
+  - Với text/plain, có thể fallback kiểm buffer text an toàn.
+  - Với doc/docx/xls/xlsx/ppt/pptx/pdf/image, verify file signature hợp lý nếu package hỗ trợ.
+  - Nếu magic type không khớp allowlist thì reject.
+- Không cho upload `.html`, `.svg`, `.js`, `.exe`, `.sh`, `.bat`, `.cmd`, `.php`, 
+
+=== moderation ===
+
+moderation needs it.
+- Mark message metadata if filtered:
+  - `was_filtered boolean`
+  - `filter_hits text[]` optional.
+
+Rules:
+- Bad word filtering applies to:
+  - public chat
+  - direct chat
+  - group chat
+  - AI prompt if needed
+- Admin can choose severity:
+  - low: replace
+  - medium: replace + audit
+  - high: block message
+
+================================================================================
+PHẦN 7  AI CHATBOT
+================================================================================
+
+7.1. Provider
+Implement AI chatbot with a provider abstraction.
+
+Env:
+- AI_PROVIDER=gemini
+- GEMINI_API_KEY=
+- GEMINI_MODEL=gemini-1.5-flash or current stable model
+- AI_RATE_LIMIT_PER_MINUTE=10
+- AI_MAX_INPUT_CHARS=4000
+
+7.2. Routes
+- GET `/api/ai/sessions`
+- POST `/api/ai/sessions`
+- GET `/api/ai/sessions/:id/messages`
+- POST `/api/ai/sessions/:id/messages`
+- DELETE `/api/ai/sessions/:id`
+
+7.3. Behavior
+- User opens AI Bot tab.
+- Can create AI chat session.
+- Message saved to `ai_messages`.
+- Server calls Gemini with system prompt:
+  - helpful Vietnamese assistant
+  - do not reveal secrets
+  - do not claim access to private data beyond current chat
+- Store assistant response.
+- Return response.
+- Optional stream response later, but initial version normal request is fine.
+
+7.4. Security for AI
+- Never send secrets/env to AI provider.
+- Redact tokens/keys if user pastes them before storing logs? At least warn.
+- Rate limit per user.
+- Max input length.
+- Audit abuse if needed.
+- Prompt injection cannot affect system secrets.
+
+================================================================================
+PHẦN 8  ADMIN DASHBOARD
+================================================================================
+
+8.1. Role system
+Users have role:
+- user
+- moderator
+- admin
+
+Middleware:
+- `requireAuth`
+- `requireRole('admin')`
+- `requireRole('moderator','admin')`
+
+Admin routes:
+- `/admin`
+- `/admin/users`
+- `/admin/messages`
+- `/admin/bad-words`
+- `/admin/audit-logs`
+- `/admin/stats`
+
+8.2. Admin API
+Stats:
+- GET `/api/admin/stats`
+  - total users
+  - active users
+  - locked users
+  - total messages
+  - messages today
+  - files uploaded
+  - storage used
+  - public/group/direct count
+
+Users:
+- GET `/api/admin/users?q=&status=&role=&page=`
+- PATCH `/api/admin/users/:id`
+  - role
+  - lock/unlock
+  - displayName maybe
+- DELETE `/api/admin/users/:id` soft-delete or deactivate
+- Do not allow admin to delete self accidentally.
+
+Messages:
+- GET `/api/admin/messages?q=&conversationId=&userId=&type=&page=`
+- DELETE `/api/admin/messages/:id`
+- PATCH `/api/admin/messages/:id` optional moderation edit
+
+Bad words:
+- GET `/api/admin/bad-words`
+- POST `/api/admin/bad-words`
+- DELETE `/api/admin/bad-words/:id`
+
+Audit:
+- GET `/api/admin/audit-logs`
+
+8.3. Audit logging
+Create `audit.service.js`.
+Log:
+- login success/fail maybe aggregate
+- logout
+- register
+- password reset request/complete
+- profile update
+- message delete/edit
+- admin lock/unlock user
+- admin bad word create/delete
+- admin message delete
+- upload rejected for security reason
+Fields:
+- actorId
+- actorRole
+- action
+- targetType
+- targetId
+- details
+- ip
+- userAgent
+
+8.4. Admin UI
+Use current HTML/CSS style.
+Add pages under `views/admin/*.html` or render via page controller.
+Do not use React.
+Responsive but desktop-first is fine.
+
+================================================================================
+PHẦN 9  FRONTEND UX FULL
+================================================================================
+
+9.1. Home/auth page
+- Login tab.
+- Register tab.
+- Forgot password link.
+- OTP flow:
+  1. Enter email.
+  2. Enter OTP.
+  3. Set new password.
+- Show loading state.
+- Show error messages cleanly.
+- Redirect to `/chat` if already logged in.
+
+9.2. Chat layout
+Sidebar sections:
+- Current user profile summary.
+- Search user/conversation.
+- Public room.
+- Conversations.
+- Online users.
+- Groups.
+- AI Bot.
+- Admin link if role admin/moderator.
+
+Chat header:
+- Avatar.
+- Name.
+- Online/last seen.
+- Conversation type.
+- Buttons:
+  - search
+  - settings/group members
+  - logout/profile
+
+Composer:
+- Text input.
+- Attach file.
+- Image upload.
+- Voice record.
+- Emoji/reaction picker optional.
+- Send button.
+- File preview.
+- Upload progress.
+- Error retry.
+
+Messages:
+- Text bubble.
+- Image bubble.
+- File card.
+- Voice audio player.
+- Reactions.
+- Edited label.
+- Deleted state.
+- Read status.
+- Timestamp.
+- Context menu:
+  - reply
+  - react
+  - edit own text
+  - delete own message
+  - admin delete if admin
+
+9.3. Profile page/modal
+- View username/email/display name/bio/avatar.
+- Update display name/bio.
+- Change avatar.
+- Change password.
+- Logout all sessions optional.
+
+9.4. Accessibility
+- Buttons have aria-label.
+- Forms have labels.
+- Keyboard usable.
+- Focus states visible.
+- Color contrast adequate.
+- Toast has role alert.
+
+================================================================================
+PHẦN 10  SECURITY HARDENING TOÀN DỰ ÁN
+====================

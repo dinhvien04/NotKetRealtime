@@ -28,19 +28,22 @@ function createMockS3Client(headResponse, headError = null, getBody = null) {
         if (headError) {
           throw headError;
         }
-        return headResponse;
+        // ensure ContentLength is present for size checks in content validate
+        if (headResponse && !headResponse.ContentLength && headResponse.ContentLength !== 0) {
+          headResponse = { ...headResponse, ContentLength: 123 };
+        }
+        return headResponse || { ContentLength: 123, ContentType: "application/octet-stream" };
       }
       if (name === "PutObjectCommand") {
         return {};
       }
       if (name === "GetObjectCommand") {
         if (getBody) {
-          // simulate stream
           const { Readable } = require("stream");
           const stream = Readable.from([getBody]);
           return { Body: stream };
         }
-        return { Body: { [Symbol.asyncIterator]: async function* () {} } }; // empty
+        return { Body: { [Symbol.asyncIterator]: async function* () {} } };
       }
       throw new Error(`Unexpected command: ${name}`);
     }
@@ -158,6 +161,52 @@ async function run() {
         originalName: "bad.png"
       }),
     /Không thể xác định loại file từ nội dung/
+  );
+
+  // text/plain with null byte (even after "2MB" position) must reject when full read
+  const textWithLateNull = Buffer.alloc(3000, "A".charCodeAt(0));
+  textWithLateNull[2500] = 0; // null byte
+  setS3ClientForTests(
+    createMockS3Client({ ContentLength: 3000, ContentType: "text/plain" }, null, textWithLateNull)
+  );
+  await assert.rejects(
+    () =>
+      verifyUploadedObjectContent({
+        fileKey: "chats/u/long.txt",
+        expectedMimeType: "text/plain",
+        originalName: "long.txt"
+      }),
+    /Nội dung file text không hợp lệ/
+  );
+
+  // generic zip declared as docx must reject (bad office structure)
+  const genericZipBytes = Buffer.from("PK\x03\x04 fake zip content without office xmls");
+  setS3ClientForTests(
+    createMockS3Client({ ContentLength: 500, ContentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }, null, genericZipBytes)
+  );
+  await assert.rejects(
+    () =>
+      verifyUploadedObjectContent({
+        fileKey: "chats/u/fake.docx",
+        expectedMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        originalName: "fake.docx"
+      }),
+    /không hợp lệ|không thể xác định|zip|office/i
+  );
+
+  // fake PNG metadata but text bytes (as before) reject
+  const textAsPngBytes = Buffer.from("this is plain text pretending to be png");
+  setS3ClientForTests(
+    createMockS3Client({ ContentLength: 100, ContentType: "image/png" }, null, textAsPngBytes)
+  );
+  await assert.rejects(
+    () =>
+      verifyUploadedObjectContent({
+        fileKey: "chats/u/text.png",
+        expectedMimeType: "image/png",
+        originalName: "text.png"
+      }),
+    /Không thể xác định loại file từ nội dung|không khớp|nội dung file/
   );
 
   uploadModel.addPendingUpload("user-2", {

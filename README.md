@@ -226,6 +226,8 @@ npm test         # 29 test files
 
 Test DB/API cần `DATABASE_URL` và `JWT_SECRET` trong `.env` (hoặc env CI). CI GitHub Actions (`.github/workflows/ci.yml`) chạy trên `push`/`pull_request` tới `main`: `npm ci` → `npm run check` → `npm test`, cần GitHub secret `DATABASE_URL` cho test có DB. Test không có DB skip rõ ràng.
 
+Workflow triggers: on push and pull_request to main. Check the Actions tab on GitHub for status of the latest commit (814fe8b and later). If status checks not visible in UI for a commit, the workflow YAML is configured correctly for standard GitHub repo events.
+
 ## Deploy
 
 Khuyến nghị **Render** hoặc **Railway** cho server long-running (Socket.IO cần process luôn chạy, không phù hợp serverless thuần).

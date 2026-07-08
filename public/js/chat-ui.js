@@ -1,6 +1,8 @@
 // chat-ui.js - chat rendering, messages, typing, search, sidebar etc.
 const DELETED_LABEL = "Tin nhắn đã bị xóa";
 const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+window.DELETED_LABEL = DELETED_LABEL;
+window.MESSAGE_EDIT_WINDOW_MS = MESSAGE_EDIT_WINDOW_MS;
 
 function showToast(message, type = "info") {
   const region = (window.elements && window.elements.toastRegion) ? window.elements.toastRegion : null;
