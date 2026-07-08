@@ -11,6 +11,7 @@ const uploadModel = require("../src/models/upload.model");
 const {
   validateUploadMetadata,
   verifyUploadedObject,
+  verifyUploadedObjectContent,
   redactPresignedUrl
 } = require("../src/services/storage.service");
 const {
@@ -19,7 +20,7 @@ const {
 } = require("../src/services/s3.service");
 const fileMessageService = require("../src/services/file-message.service");
 
-function createMockS3Client(headResponse, headError = null) {
+function createMockS3Client(headResponse, headError = null, getBody = null) {
   return {
     send: async (command) => {
       const name = command.constructor.name;
@@ -33,7 +34,13 @@ function createMockS3Client(headResponse, headError = null) {
         return {};
       }
       if (name === "GetObjectCommand") {
-        return {};
+        if (getBody) {
+          // simulate stream
+          const { Readable } = require("stream");
+          const stream = Readable.from([getBody]);
+          return { Body: stream };
+        }
+        return { Body: { [Symbol.asyncIterator]: async function* () {} } }; // empty
       }
       throw new Error(`Unexpected command: ${name}`);
     }
@@ -136,6 +143,21 @@ async function run() {
         expectedMimeType: "image/png"
       }),
     /Kích thước object không khớp/
+  );
+
+  // content validation: fake bytes with png meta must reject (magic mismatch)
+  const badPngBytes = Buffer.from("fake not png data here"); // wrong magic
+  setS3ClientForTests(
+    createMockS3Client({ ContentLength: 123, ContentType: "image/png" }, null, badPngBytes)
+  );
+  await assert.rejects(
+    () =>
+      verifyUploadedObjectContent({
+        fileKey: "chats/user-1/2026/07/bad.png",
+        expectedMimeType: "image/png",
+        originalName: "bad.png"
+      }),
+    /Không thể xác định loại file từ nội dung/
   );
 
   uploadModel.addPendingUpload("user-2", {

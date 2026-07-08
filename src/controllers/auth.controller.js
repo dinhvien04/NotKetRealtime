@@ -164,6 +164,7 @@ async function meFromCookie(req, res) {
     const user = await authService.getUserFromToken(token);
     return res.json({ ok: true, user });
   } catch (error) {
+    clearAuthCookie(res);
     return res.status(401).json({
       ok: false,
       error: "Phiên đăng nhập không hợp lệ hoặc đã hết hạn."

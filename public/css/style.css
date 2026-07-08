@@ -3876,3 +3876,29 @@ body::after {
     flex-wrap: wrap;
   }
 }
+
+/* Iconify web component rendering */
+iconify-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+}
+
+.group-icon-preview,
+.group-icon-preview-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--outline);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.group-icon-preview iconify-icon,
+.group-icon-preview-symbol iconify-icon {
+  width: 24px;
+  height: 24px;
+}

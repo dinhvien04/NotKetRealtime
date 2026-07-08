@@ -16,6 +16,23 @@ function appendAiMessage(message) {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
+function showAiLoadingBubble() {
+  const msgs = window.elements && window.elements.messages;
+  if (!msgs) return null;
+  const row = document.createElement("article");
+  row.className = "message-row ai-loading";
+  const bubble = document.createElement("div");
+  bubble.className = "message-bubble is-loading";
+  bubble.textContent = "AI đang trả lời...";
+  const meta = document.createElement("span");
+  meta.className = "message-meta";
+  meta.textContent = "AI Bot";
+  row.append(bubble, meta);
+  msgs.append(row);
+  msgs.scrollTop = msgs.scrollHeight;
+  return row;
+}
+
 async function loadAiSessions() {
   try {
     const apiFn = window.api || (async () => ({ sessions: [] }));
@@ -75,6 +92,7 @@ async function createAiSession() {
 
 if (typeof window !== "undefined") {
   window.appendAiMessage = appendAiMessage;
+  window.showAiLoadingBubble = showAiLoadingBubble;
   window.loadAiSessions = loadAiSessions;
   window.renderAiSessions = renderAiSessions;
   window.selectAiSession = selectAiSession;

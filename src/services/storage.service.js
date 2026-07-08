@@ -253,6 +253,50 @@ async function verifyUploadedObject({ fileKey, expectedSize, expectedMimeType })
   return true;
 }
 
+async function verifyUploadedObjectContent({ fileKey, expectedMimeType, originalName }) {
+  if (!fileKey) {
+    throw new Error("Thiếu fileKey.");
+  }
+
+  const s3Client = getS3Client();
+
+  // Get first bytes (sufficient for magic detection) or full for small files
+  const MAX_CONTENT_BYTES = 2 * 1024 * 1024; // 2MB cap to avoid excessive memory
+  const getCommand = new GetObjectCommand({
+    Bucket: config.s3Bucket,
+    Key: fileKey,
+    Range: `bytes=0-${MAX_CONTENT_BYTES - 1}`
+  });
+
+  let buffer;
+  try {
+    const response = await s3Client.send(getCommand);
+    const chunks = [];
+    for await (const chunk of response.Body) {
+      chunks.push(chunk);
+    }
+    buffer = Buffer.concat(chunks);
+  } catch (error) {
+    if (error?.name === "NoSuchKey" || error?.$metadata?.httpStatusCode === 404) {
+      throw new Error("Object chưa tồn tại trên storage.");
+    }
+    throw new Error(error?.message || "Không thể đọc nội dung file từ storage để xác thực.");
+  }
+
+  if (!buffer || buffer.length === 0) {
+    throw new Error("File rỗng trên storage.");
+  }
+
+  // Reuse content validation (magic bytes, office, text, audio etc.)
+  await validateUploadedFile({
+    buffer,
+    declaredMimeType: expectedMimeType,
+    originalName
+  });
+
+  return true;
+}
+
 async function deleteObject(fileKey) {
   if (!fileKey) {
     return false;
@@ -317,6 +361,7 @@ module.exports = {
   createPresignedUpload,
   resolveFileUrl,
   verifyUploadedObject,
+  verifyUploadedObjectContent,
   deleteObject,
   uploadAvatar
 };

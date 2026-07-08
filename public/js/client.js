@@ -159,7 +159,7 @@ if (typeof window !== "undefined") {
   window.socket = socket;
 }
 
-// api/ensure moved to api.js (window.api / window.ensureCsrfToken)
+ // api/ensure moved to api.js (window.api / window.ensureCsrfToken)
 function getInitials(name = "") {
   return (window.getInitials ? window.getInitials(name) : name.split(/\s+/).filter(Boolean).slice(-2).map(p => p.charAt(0).toUpperCase()).join(""));
 }
@@ -813,17 +813,6 @@ function setComposerDisabled(disabled) {
   }
 }
 
-function setUploadProgress(percent) {
-  if (!elements.uploadProgress || !elements.uploadProgressBar) return;
-  if (percent === null) {
-    elements.uploadProgress.classList.add("is-hidden");
-    elements.uploadProgressBar.style.width = "0%";
-    return;
-  }
-  elements.uploadProgress.classList.remove("is-hidden");
-  elements.uploadProgressBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
-}
-
 function renderConversationHeader(user = state.selectedUser, isOnline = true) {
   if (state.chatMode === "public" && state.publicRoom) {
     elements.selectedUsername.textContent = state.publicRoom.name || "Phòng trò chuyện";
@@ -1013,21 +1002,6 @@ async function selectAiSession(sessionId) {
   }
 }
 
-function appendAiMessage(message) {
-  const row = document.createElement("article");
-  const bubble = document.createElement("div");
-  const meta = document.createElement("span");
-  const isAssistant = message.role === "assistant";
-  row.className = `message-row${isAssistant ? "" : " is-own"}`;
-  bubble.className = "message-bubble";
-  bubble.textContent = message.content || "";
-  meta.className = "message-meta";
-  meta.textContent = isAssistant ? "AI Bot" : "Bạn";
-  row.append(bubble, meta);
-  elements.messages.append(row);
-  elements.messages.scrollTop = elements.messages.scrollHeight;
-}
-
 async function createAiSession() {
   try {
     const result = await api("/api/ai/sessions", {
@@ -1042,27 +1016,12 @@ async function createAiSession() {
   }
 }
 
-function showAiLoadingBubble() {
-  if (!elements.messages) return null;
-  const row = document.createElement("article");
-  row.className = "message-row ai-loading";
-  const bubble = document.createElement("div");
-  bubble.className = "message-bubble is-loading";
-  bubble.textContent = "AI đang trả lời...";
-  const meta = document.createElement("span");
-  meta.className = "message-meta";
-  meta.textContent = "AI Bot";
-  row.append(bubble, meta);
-  elements.messages.append(row);
-  elements.messages.scrollTop = elements.messages.scrollHeight;
-  return row;
-}
-
 async function sendAiMessage(text) {
-  appendAiMessage({ role: "user", content: text });
-  const loadingRow = showAiLoadingBubble();
+  const showLoading = window.showAiLoadingBubble;
+  const loadingRow = showLoading ? showLoading() : null;
   try {
-    const apiCall = api(`/api/ai/sessions/${state.aiSessionId}/messages`, {
+    const apiFn = window.api || api;
+    const apiCall = apiFn(`/api/ai/sessions/${state.aiSessionId}/messages`, {
       method: "POST",
       body: JSON.stringify({ content: text })
     });
@@ -1071,8 +1030,10 @@ async function sendAiMessage(text) {
     );
     const result = await Promise.race([apiCall, timeout]);
     if (loadingRow && loadingRow.parentNode) loadingRow.parentNode.removeChild(loadingRow);
-    if (result.userMessage) appendAiMessage(result.userMessage);
-    if (result.assistantMessage) appendAiMessage(result.assistantMessage);
+    // append only server returned (no optimistic user + server user dup)
+    const appendFn = window.appendAiMessage;
+    if (result.userMessage && appendFn) appendFn(result.userMessage);
+    if (result.assistantMessage && appendFn) appendFn(result.assistantMessage);
     loadAiSessions();
   } catch (error) {
     if (loadingRow && loadingRow.parentNode) loadingRow.parentNode.removeChild(loadingRow);
@@ -1502,96 +1463,6 @@ function handleIncomingRoomMessage(message, mode) {
   }
 }
 
-function inferUploadKind(file, extraFields = {}) {
-  if (extraFields.kind) return extraFields.kind;
-  if (file?.type?.startsWith("image/")) return "image";
-  if (file?.type?.startsWith("audio/")) return "voice";
-  return "file";
-}
-
-async function signUpload(file, extraFields = {}) {
-  const csrfToken = await ensureCsrfToken();
-  const kind = inferUploadKind(file, extraFields);
-  const response = await fetch("/api/uploads/sign", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRF-Token": csrfToken
-    },
-    body: JSON.stringify({
-      fileName: file.name,
-      mimeType: file.type,
-      size: file.size,
-      kind,
-      durationMs:
-        extraFields.durationMs === undefined ? null : extraFields.durationMs
-    })
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.ok || !data.upload) {
-    throw new Error(data.error || "Không thể ký URL upload.");
-  }
-  return data.upload;
-}
-
-function putFileToSignedUrl(file, upload) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open(upload.method || "PUT", upload.uploadUrl);
-    const headers = upload.headers || {};
-    for (const [key, value] of Object.entries(headers)) {
-      xhr.setRequestHeader(key, value);
-    }
-    xhr.upload.addEventListener("progress", (event) => {
-      if (!event.lengthComputable) return;
-      const percent = Math.round((event.loaded / event.total) * 100);
-      setUploadProgress(percent);
-    });
-    xhr.addEventListener("load", () => {
-      setUploadProgress(null);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve();
-        return;
-      }
-      reject(new Error("Không thể upload file lên storage."));
-    });
-    xhr.addEventListener("error", () => {
-      setUploadProgress(null);
-      reject(new Error("Không thể upload file lên storage."));
-    });
-    xhr.send(file);
-  });
-}
-
-async function uploadFileWithProgress(file, extraFields = {}) {
-  const upload = await signUpload(file, extraFields);
-  await putFileToSignedUrl(file, upload);
-  return {
-    kind: upload.kind,
-    fileKey: upload.fileKey,
-    fileName: upload.fileName,
-    mimeType: upload.mimeType,
-    size: upload.size,
-    durationMs: upload.durationMs ?? extraFields.durationMs ?? null
-  };
-}
-
-async function uploadSelectedFile(file, extraFields = {}, maxAttempts = 3) {
-  let lastError;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      return await uploadFileWithProgress(file, extraFields);
-    } catch (error) {
-      lastError = error;
-      if (attempt < maxAttempts) {
-        await new Promise((resolve) => window.setTimeout(resolve, 400 * attempt));
-      }
-    }
-  }
-  throw lastError;
-}
-
 function getMessageSocketEvent() {
   if (state.chatMode === "public") return "public_message";
   if (state.chatMode === "group") return "group_message";
@@ -1756,7 +1627,8 @@ async function sendVoiceRecording() {
   renderConversationHeader();
 
   try {
-    const fileMeta = await uploadSelectedFile(file, {
+    const uploadSel = window.uploadSelectedFile || uploadSelectedFile;
+    const fileMeta = await uploadSel(file, {
       kind: "voice",
       durationMs
     });
@@ -1832,7 +1704,8 @@ async function handleMessageSubmit() {
 
   try {
     if (file) {
-      const fileMeta = await uploadSelectedFile(file);
+      const uploadSel = window.uploadSelectedFile || uploadSelectedFile;
+      const fileMeta = await uploadSel(file);
       await sendFileMessage(fileMeta);
       clearSelectedFile();
       clearReplyTarget();
@@ -1851,25 +1724,12 @@ async function handleMessageSubmit() {
   }
 }
 
-function renderGroupIconPreview() {
-  if (!elements.groupIconPreview) return;
-  elements.groupIconPreview.replaceChildren();
-  const icon = (typeof createIconElement === "function" ? createIconElement : (window.createIconElement || (()=>null)))(
-    state.selectedGroupIcon.iconName,
-    state.selectedGroupIcon.color,
-    "group-icon-preview-symbol"
-  );
-  if (icon) elements.groupIconPreview.append(icon);
-  else elements.groupIconPreview.textContent = "G";
-  if (elements.groupIconColor) elements.groupIconColor.value = state.selectedGroupIcon.color;
-}
-
 function openGroupModal() {
   elements.groupError.textContent = "";
   elements.groupNameInput.value = "";
   elements.groupMembersInput.value = "";
   state.selectedGroupIcon = { iconName: "lucide:users", color: "#22c55e" };
-  renderGroupIconPreview();
+  (window.renderGroupIconPreview || renderGroupIconPreview)();
   elements.groupModal?.classList.remove("is-hidden");
 }
 
@@ -1920,14 +1780,25 @@ function closeProfileModal() {
 
 if (page === "home") {
   const params = new URLSearchParams(window.location.search);
+  const justLoggedOut = params.get("loggedOut");
+
   if (params.get("auth") === "register") switchAuthTab("register");
   else switchAuthTab("login");
 
-  api("/api/auth/me")
-    .then(() => {
-      window.location.href = "/chat";
-    })
-    .catch(() => {});
+  if (!justLoggedOut) {
+    (window.api || api)("/api/auth/me")
+      .then(() => {
+        window.location.href = "/chat";
+      })
+      .catch(() => {});
+  }
+
+  // clean the param
+  if (justLoggedOut) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    // fire a me check to let server clear any stale auth cookie via the 401 response
+    (window.api || api)("/api/auth/me").catch(() => {});
+  }
 
   elements.loginTab?.addEventListener("click", () => switchAuthTab("login"));
   elements.registerTab?.addEventListener("click", () => switchAuthTab("register"));
@@ -1941,7 +1812,7 @@ if (page === "home") {
     elements.loginError.textContent = "";
     const formData = new FormData(elements.loginForm);
     try {
-      await api("/api/auth/login", {
+      await (window.api || api)("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({
           usernameOrEmail: formData.get("usernameOrEmail"),
@@ -1962,7 +1833,7 @@ if (page === "home") {
 
     try {
       if (state.forgotStep === "request") {
-        const result = await api("/api/auth/forgot-password", {
+        const result = await (window.api || api)("/api/auth/forgot-password", {
           method: "POST",
           body: JSON.stringify({ email })
         });
@@ -1978,7 +1849,7 @@ if (page === "home") {
         return;
       }
 
-      const verify = await api("/api/auth/verify-reset-otp", {
+      const verify = await (window.api || api)("/api/auth/verify-reset-otp", {
         method: "POST",
         body: JSON.stringify({
           email,
@@ -1987,7 +1858,7 @@ if (page === "home") {
       });
       state.forgotResetTokenId = verify.resetTokenId;
 
-      await api("/api/auth/reset-password", {
+      await (window.api || api)("/api/auth/reset-password", {
         method: "POST",
         body: JSON.stringify({
           resetTokenId: state.forgotResetTokenId,
@@ -2008,7 +1879,7 @@ if (page === "home") {
     elements.registerError.textContent = "";
     const formData = new FormData(elements.registerForm);
     try {
-      await api("/api/auth/register", {
+      await (window.api || api)("/api/auth/register", {
         method: "POST",
         body: JSON.stringify({
           username: formData.get("username"),
@@ -2025,27 +1896,39 @@ if (page === "home") {
 }
 
 if (page === "chat") {
-  api("/api/auth/me")
-    .then(async (data) => {
-      state.currentUser = data.user;
-      try {
-        const profile = await api("/api/users/me");
-        state.currentUser = profile.user;
-      } catch (_error) {
-        // fallback auth/me profile
-      }
+  (async () => {
+    let data;
+    try {
+      data = await (window.api || api)("/api/auth/me");
+    } catch (_error) {
+      window.location.replace("/?auth=login");
+      return;
+    }
+
+    state.currentUser = data.user;
+
+    try {
+      const profile = await (window.api || api)("/api/users/me");
+      state.currentUser = profile.user;
+    } catch (_error) {
+      // fallback auth/me profile
+    }
+
+    try {
       elements.currentUsername.textContent =
-        data.user.displayName || data.user.username;
+        state.currentUser.displayName || state.currentUser.username;
       setAvatar(
         elements.currentAvatar,
-        data.user.displayName || data.user.username
+        state.currentUser.displayName || state.currentUser.username,
+        state.currentUser.avatarUrl
       );
       updateAdminLink();
       if (socket.connected) joinChat();
-    })
-    .catch(() => {
-      window.location.replace("/?auth=login");
-    });
+    } catch (error) {
+      console.error("Chat bootstrap failed after authentication:", error);
+      showToast("Đã đăng nhập nhưng không thể tải giao diện chat.", "error");
+    }
+  })();
 
   socket.on("connect", () => {
     if (state.currentUser && !state.hasJoined) joinChat();
@@ -2160,14 +2043,14 @@ if (page === "chat") {
       selectedColor: state.selectedGroupIcon.color,
       onSelect: ({ iconName, color }) => {
         state.selectedGroupIcon = { iconName, color };
-        renderGroupIconPreview();
+        (window.renderGroupIconPreview || renderGroupIconPreview)();
       }
     });
   });
   elements.groupIconColor?.addEventListener("change", () => {
     const safeColor = (typeof normalizeHexColor === "function" ? normalizeHexColor : (window.normalizeHexColor || (()=>null)))(elements.groupIconColor.value);
     if (safeColor) state.selectedGroupIcon.color = safeColor;
-    renderGroupIconPreview();
+    (window.renderGroupIconPreview || renderGroupIconPreview)();
   });
   elements.groupModal?.addEventListener("click", (event) => {
     if (event.target === elements.groupModal) closeGroupModal();
@@ -2340,7 +2223,7 @@ if (page === "chat") {
     }
     state.csrfToken = null;
     socket.disconnect();
-    window.location.href = "/";
+    window.location.href = "/?loggedOut=1";
   });
 
   elements.mobileMenuButton.addEventListener("click", () => {

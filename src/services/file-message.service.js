@@ -8,7 +8,7 @@ async function buildVerifiedFileMessagePayload(user, payload = {}) {
     throw new Error("Loại tin nhắn không được hỗ trợ.");
   }
 
-  const pendingUpload = uploadModel.consumePendingUpload(user.id, payload.fileKey);
+  const pendingUpload = uploadModel.getPendingUpload(user.id, payload.fileKey);
 
   if (!pendingUpload) {
     throw new Error("File chưa được upload hợp lệ hoặc đã hết hạn.");
@@ -36,9 +36,18 @@ async function buildVerifiedFileMessagePayload(user, payload = {}) {
       expectedSize: pendingUpload.size,
       expectedMimeType: pendingUpload.mimeType
     });
+    await storageService.verifyUploadedObjectContent({
+      fileKey: pendingUpload.fileKey,
+      expectedMimeType: pendingUpload.mimeType,
+      originalName: pendingUpload.fileName
+    });
   } catch (_error) {
-    throw new Error("File chưa upload xong hoặc metadata không khớp.");
+    throw new Error("File content không hợp lệ hoặc chưa upload xong.");
   }
+
+  // Only consume after all validations (HEAD + content) pass.
+  // If transient fail (e.g. GetObject temp error), pending stays for retry.
+  uploadModel.consumePendingUpload(user.id, pendingUpload.fileKey);
 
   const fileUrl = await storageService.resolveFileUrl(pendingUpload.fileKey);
 

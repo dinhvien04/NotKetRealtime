@@ -83,26 +83,27 @@ async function searchIconify(query, prefix, limit) {
 }
 
 async function searchIconSuggestions({ query = "", prefix = "", limit } = {}) {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
   const normalizedPrefix = String(prefix || "").trim().toLowerCase();
   if (normalizedPrefix && !isAllowedIconPrefix(normalizedPrefix)) {
     throw new Error("Icon prefix không được hỗ trợ.");
   }
   const maxLimit = config.iconMaxSearchResults;
   const safeLimit = Math.max(1, Math.min(Number(limit) || maxLimit, maxLimit));
-  const cacheKey = `${query}|${normalizedPrefix}|${safeLimit}`;
+  const cacheKey = `${normalizedQuery}|${normalizedPrefix}|${safeLimit}`;
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.icons;
 
   let icons = [];
   if (config.iconUseIconifyApi) {
     try {
-      icons = await searchIconify(query, normalizedPrefix, safeLimit);
+      icons = await searchIconify(normalizedQuery, normalizedPrefix, safeLimit);
     } catch (_error) {
       icons = [];
     }
   }
   if (!icons.length) {
-    icons = fallbackSearch(query, normalizedPrefix, safeLimit);
+    icons = fallbackSearch(normalizedQuery, normalizedPrefix, safeLimit);
   }
   cache.set(cacheKey, { icons, expiresAt: Date.now() + 5 * 60 * 1000 });
   return icons;

@@ -14,8 +14,10 @@ const storageService = require("../src/services/storage.service");
 
 const originalVerifyUploadedObject = storageService.verifyUploadedObject;
 const originalResolveFileUrl = storageService.resolveFileUrl;
+const originalVerifyContent = storageService.verifyUploadedObjectContent;
 
 storageService.verifyUploadedObject = async () => true;
+storageService.verifyUploadedObjectContent = async () => true;
 storageService.resolveFileUrl = async (fileKey) =>
   `https://storage.test/${fileKey}`;
 const { getDatabaseError, closePool } = require("../src/db");
@@ -273,6 +275,7 @@ async function run() {
     );
   } finally {
     storageService.verifyUploadedObject = originalVerifyUploadedObject;
+    storageService.verifyUploadedObjectContent = originalVerifyContent;
     storageService.resolveFileUrl = originalResolveFileUrl;
     clearTimeout(guard);
     clientA.disconnect();

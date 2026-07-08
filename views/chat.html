@@ -262,6 +262,16 @@
         <input id="groupNameInput" name="name" type="text" maxlength="80" required>
         <label for="groupMembersInput">Thêm thành viên (username, cách nhau bởi dấu phẩy)</label>
         <input id="groupMembersInput" name="members" type="text" placeholder="user1, user2">
+
+        <div class="group-icon-row">
+          <label>Icon nhóm</label>
+          <div class="group-icon-row-inner">
+            <button type="button" id="groupIconButton" class="group-icon-button">Chọn icon</button>
+            <span id="groupIconPreview" class="group-icon-preview" aria-hidden="true"></span>
+            <input type="color" id="groupIconColor" value="#22c55e" aria-label="Màu icon nhóm">
+          </div>
+        </div>
+
         <p class="form-error" id="groupError" role="alert"></p>
         <button class="home-join-button" type="submit">Tạo nhóm</button>
       </form>
@@ -269,6 +279,7 @@
   </div>
 
   <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+  <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/socket-client.js"></script>
