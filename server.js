@@ -40,16 +40,21 @@ async function start() {
     await redisService.connect();
     await redisService.attachSocketAdapter(io);
 
-    httpServer.listen(config.port, () => {
-      logger.info("Server started", {
-        port: config.port,
-        redis: redisService.isEnabled(),
-        env: config.nodeEnv
+    // Only listen if not running in Vercel serverless (or other serverless env)
+    if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+      httpServer.listen(config.port, () => {
+        logger.info("Server started", {
+          port: config.port,
+          redis: redisService.isEnabled(),
+          env: config.nodeEnv
+        });
       });
-    });
+    }
   } catch (error) {
     logger.error("Không thể khởi động server", { error: error.message });
-    process.exit(1);
+    if (!process.env.VERCEL) {
+      process.exit(1);
+    }
   }
 }
 
@@ -74,4 +79,11 @@ async function shutdown(signal) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-start();
+// For local / traditional hosting
+if (require.main === module) {
+  start();
+}
+
+// Export express app for serverless platforms (Vercel, etc.)
+// Note: Full Socket.IO support on serverless has limitations (use dedicated hosting for production realtime)
+module.exports = app;
