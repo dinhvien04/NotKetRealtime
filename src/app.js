@@ -80,9 +80,9 @@ function buildConnectSrc() {
   getS3ConnectSrc().forEach((s) => sources.add(s));
 
   // Iconify APIs
-  sources.add("https://api.iconify.design");
-  sources.add("https://api.simplesvg.com");
-  sources.add("https://api.unisvg.com");
+  sources.add("https://api.iconify.design/");
+  sources.add("https://api.simplesvg.com/");
+  sources.add("https://api.unisvg.com/");
 
   if (!config.isProduction) {
     // Dev: allow generic for easy local ws + localhost variants
@@ -109,7 +109,7 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         imgSrc: ["'self'", "data:", "https:"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "https://code.iconify.design"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://code.iconify.design/"],
         connectSrc: buildConnectSrc(),
         styleSrc: ["'self'", "'unsafe-inline'"]
       }

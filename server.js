@@ -16,7 +16,7 @@ const {
 
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
-  serveClient: false, // Disable serving client script (use CDN instead, better for serverless like Vercel)
+  serveClient: true, // Enable serving client script locally
   cors: {
     origin: createSocketCorsOriginChecker(),
     credentials: true

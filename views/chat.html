@@ -163,6 +163,12 @@
               </button>
               <input id="fileInput" type="file" hidden accept="image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
               <input id="messageInput" type="text" maxlength="2000" autocomplete="off" placeholder="Nhập tin nhắn..." disabled>
+              <button class="chat-input-tool-btn" id="chatEmojiButton" type="button" disabled aria-label="Mở bảng cảm xúc">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+              </button>
+              <button class="chat-input-tool-btn" id="chatLikeButton" type="button" disabled aria-label="Thả Like">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+              </button>
               <button id="sendButton" type="submit" disabled aria-label="Gửi tin nhắn">
                 <span>Gửi</span>
                 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></svg>
@@ -280,7 +286,7 @@
 
   <div class="toast-region" id="toastRegion" aria-live="polite"></div>
   <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
-  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" crossorigin="anonymous"></script>
+  <script src="/socket.io/socket.io.js"></script>
   <script src="/js/api.js"></script>
   <script src="/js/socket-client.js"></script>
   <script src="/js/icon-picker.js"></script>

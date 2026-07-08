@@ -27,6 +27,8 @@ const elements = {
   typingText: document.getElementById("typingText"),
   messageForm: document.getElementById("messageForm"),
   messageInput: document.getElementById("messageInput"),
+  chatEmojiButton: document.getElementById("chatEmojiButton"),
+  chatLikeButton: document.getElementById("chatLikeButton"),
   sendButton: document.getElementById("sendButton"),
   attachButton: document.getElementById("attachButton"),
   recordButton: document.getElementById("recordButton"),
@@ -163,12 +165,9 @@ if (typeof window !== "undefined") {
 }
 
 // Make bare `api(...)` (and similar) work reliably across split modules
-const api = (typeof window !== "undefined" && window.api) || (typeof api !== "undefined" ? api : undefined);
+// Since `api` is already declared globally by api.js, we do not redeclare it here to avoid SyntaxError.
 
-// api/ensure moved to api.js (window.api / window.ensureCsrfToken)
-function getInitials(name = "") {
-  return (window.getInitials ? window.getInitials(name) : name.split(/\s+/).filter(Boolean).slice(-2).map(p => p.charAt(0).toUpperCase()).join(""));
-}
+// getInitials is already defined in api.js and accessible globally.
 
 function renderConversationIcon(element, conversation, fallbackName) {
   if (!element) return;
@@ -394,7 +393,7 @@ function createMessageActions(message) {
   reactBtn.type = "button";
   reactBtn.className = "message-action-btn";
   reactBtn.textContent = "React";
-  reactBtn.addEventListener("click", () => openReactionPicker(message.id));
+  reactBtn.addEventListener("click", () => (window.openReactionPicker || fallbackOpenReactionPicker)(message.id));
   actions.append(reactBtn);
 
   if (canEditOwnMessage(message)) {
@@ -441,7 +440,27 @@ function fillMessageBubble(bubble, message) {
   if (messageType === "image") bubble.append(createImageBubble(message));
   else if (messageType === "file") bubble.append(createFileBubble(message));
   else if (messageType === "voice") bubble.append(createVoiceBubble(message));
-  else bubble.append(document.createTextNode(getMessageBody(message)));
+  else {
+    const body = getMessageBody(message);
+    if (body.startsWith("icon:") && body.split(":").length >= 3) {
+      const parts = body.split(":");
+      const iconName = `${parts[1]}:${parts[2]}`;
+      const color = parts[3] || null;
+      if (typeof window.isSafeIconName === "function" && window.isSafeIconName(iconName)) {
+        const iconEl = window.createIconElement(iconName, color, "message-sticker-icon");
+        if (iconEl) {
+          bubble.classList.add("message-bubble-sticker");
+          bubble.append(iconEl);
+        } else {
+          bubble.append(document.createTextNode(body));
+        }
+      } else {
+        bubble.append(document.createTextNode(body));
+      }
+    } else {
+      bubble.append(document.createTextNode(body));
+    }
+  }
 
   if (message.isEdited) {
     const edited = document.createElement("span");
@@ -482,17 +501,11 @@ function updateMessageRow(message) {
 }
 
 // icon picker logic moved to /js/icon-picker.js (loaded before client.js)
-function createIconPicker(opts) {
-  if (typeof window.createIconPicker === "function") {
-    return window.createIconPicker(opts);
-  }
+function fallbackCreateIconPicker(opts) {
   console.warn("icon-picker not loaded");
 }
 
-function openReactionPicker(messageId) {
-  if (typeof window.openReactionPicker === "function") {
-    return window.openReactionPicker(messageId);
-  }
+function fallbackOpenReactionPicker(messageId) {
   // fallback minimal
   const picker = document.createElement("div");
   picker.className = "reaction-picker";
@@ -849,6 +862,8 @@ function renderConversationHeader(user = state.selectedUser, isOnline = true) {
   }
 
   elements.messageInput.disabled = state.isUploading || Boolean(state.recording);
+  if (elements.chatEmojiButton) elements.chatEmojiButton.disabled = state.isUploading || Boolean(state.recording);
+  if (elements.chatLikeButton) elements.chatLikeButton.disabled = state.isUploading || Boolean(state.recording);
   elements.attachButton.disabled = state.isUploading || Boolean(state.recording);
   elements.recordButton.disabled =
     state.isUploading || Boolean(state.recording) || Boolean(state.selectedFile);
@@ -1349,6 +1364,20 @@ async function sendTextMessage(text) {
   clearReplyTarget();
 }
 
+async function sendIconStickerMessage(iconName, color) {
+  const body = `icon:${iconName}:${color || "#3b82f6"}`;
+  try {
+    await sendCurrentMessage({
+      type: "text",
+      message: body,
+      replyToMessageId: state.replyTo?.id || null
+    });
+    clearReplyTarget();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
 function updateRecordingTimer() {
   if (!state.recording?.startedAt || !elements.recordingTimer) return;
   const elapsed = Date.now() - state.recording.startedAt;
@@ -1766,6 +1795,33 @@ if (page === "chat") {
   elements.messageForm.addEventListener("submit", (event) => {
     event.preventDefault();
     handleMessageSubmit();
+  });
+
+  elements.chatEmojiButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (typeof window.openChatInputPicker === "function") {
+      window.openChatInputPicker(
+        elements.messageForm,
+        (emoji) => {
+          const input = elements.messageInput;
+          const start = input.selectionStart || 0;
+          const end = input.selectionEnd || 0;
+          const text = input.value;
+          input.value = text.substring(0, start) + emoji + text.substring(end);
+          input.focus();
+          const nextPos = start + emoji.length;
+          input.setSelectionRange(nextPos, nextPos);
+          input.dispatchEvent(new Event("input"));
+        },
+        (iconName, color) => {
+          sendIconStickerMessage(iconName, color);
+        }
+      );
+    }
+  });
+
+  elements.chatLikeButton?.addEventListener("click", () => {
+    sendIconStickerMessage("lucide:thumbs-up", "#3b82f6");
   });
 
   elements.messageSearchButton?.addEventListener("click", runMessageSearch);

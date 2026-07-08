@@ -50,7 +50,7 @@ function issueCsrfToken(req, res) {
 function requireCsrf(req, res, next) {
   const cookieToken = req.cookies?.[config.csrfCookieName];
   const headerToken = req.get("X-CSRF-Token");
-  const session = req.user?.id ? getSessionFromRequest(req) : null;
+  const session = getSessionFromRequest(req);
 
   if (!csrfService.validateCsrfRequest(cookieToken, headerToken, session)) {
     return res.status(403).json({
