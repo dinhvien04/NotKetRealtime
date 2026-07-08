@@ -1,8 +1,18 @@
 const page = document.body.dataset.page;
-const socket = page === "chat" ? io({ 
+const socket = (page === "chat" && typeof io === "function") ? io({ 
   withCredentials: true,
   transports: ['polling', 'websocket'] // better compatibility on platforms like Vercel
-}) : null;
+}) : {
+  on: function() { return this; },
+  emit: function(name, data, callback) {
+    if (typeof callback === "function") {
+      callback({ ok: false, error: "Socket.IO offline" });
+    }
+    return this;
+  },
+  disconnect: function() { return this; },
+  connected: false
+};
 
 const elements = {
   loginForm: document.getElementById("loginForm"),
