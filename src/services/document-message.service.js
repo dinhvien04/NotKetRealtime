@@ -176,14 +176,80 @@ async function getStorageUsage() {
   };
 }
 
+const URL_IN_TEXT =
+  /\b((?:https?:\/\/|www\.)[^\s<>"'`]+)/gi;
+
+function normalizeUrl(raw) {
+  let url = String(raw || "").trim();
+  // strip trailing punctuation common in notes
+  url = url.replace(/[),.;!?]+$/g, "");
+  if (!url) return null;
+  if (url.startsWith("www.")) {
+    url = `https://${url}`;
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.toString();
+  } catch (_error) {
+    return null;
+  }
+}
+
+function extractLinksFromBody(body) {
+  if (!body || typeof body !== "string") return [];
+  const found = [];
+  const seen = new Set();
+  let match;
+  const re = new RegExp(URL_IN_TEXT.source, URL_IN_TEXT.flags);
+  while ((match = re.exec(body)) !== null) {
+    const normalized = normalizeUrl(match[1]);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    found.push(normalized);
+  }
+  return found;
+}
+
+function linkDisplayHost(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch (_error) {
+    return url;
+  }
+}
+
 async function getRecentMedia() {
-  const [images, files] = await Promise.all([
+  const [images, files, textWithLinks] = await Promise.all([
     documentMessageRepo.listRecentByType("image", 12),
-    documentMessageRepo.listRecentByType("file", 12)
+    documentMessageRepo.listRecentByType("file", 12),
+    documentMessageRepo.listRecentTextWithLinks(40)
   ]);
+
+  const links = [];
+  const seenUrl = new Set();
+  for (const message of textWithLinks) {
+    for (const url of extractLinksFromBody(message.body)) {
+      if (seenUrl.has(url)) continue;
+      seenUrl.add(url);
+      links.push({
+        url,
+        host: linkDisplayHost(url),
+        messageId: message.id,
+        body: message.body,
+        createdAt: message.createdAt
+      });
+      if (links.length >= 12) break;
+    }
+    if (links.length >= 12) break;
+  }
+
   return {
     images: await Promise.all(images.map(enrichMessage)),
-    files: await Promise.all(files.map(enrichMessage))
+    files: await Promise.all(files.map(enrichMessage)),
+    links
   };
 }
 
@@ -195,5 +261,7 @@ module.exports = {
   refreshFileUrl,
   getStorageUsage,
   getRecentMedia,
+  extractLinksFromBody,
+  normalizeUrl,
   MAX_TEXT_LENGTH
 };

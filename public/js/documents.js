@@ -13,6 +13,7 @@
   const storageText = document.getElementById("storage-text");
   const recentImages = document.getElementById("recent-images");
   const recentFiles = document.getElementById("recent-files");
+  const recentLinks = document.getElementById("recent-links");
   const uploadProgress = document.getElementById("upload-progress");
   const uploadProgressFill = document.getElementById("upload-progress-fill");
   const uploadProgressText = document.getElementById("upload-progress-text");
@@ -272,7 +273,7 @@
       if (!images.length) {
         const empty = document.createElement("div");
         empty.className = "info-empty";
-        empty.textContent = "Chưa có ảnh/video.";
+        empty.textContent = "Chưa có ảnh.";
         recentImages.appendChild(empty);
       }
 
@@ -320,6 +321,51 @@
         empty.textContent = "Chưa có file.";
         recentFiles.appendChild(empty);
       }
+
+      clearNode(recentLinks);
+      const links = data.links || [];
+      links.slice(0, 8).forEach((item) => {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.className = "info-link-item";
+        a.href = item.url || "#";
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+
+        const icon = document.createElement("span");
+        icon.className = "info-link-icon";
+        icon.textContent = "🔗";
+        icon.setAttribute("aria-hidden", "true");
+
+        const body = document.createElement("span");
+        body.className = "info-link-body";
+
+        const host = document.createElement("span");
+        host.className = "info-link-host";
+        host.textContent = item.host || item.url || "link";
+
+        const urlLine = document.createElement("span");
+        urlLine.className = "info-link-url";
+        urlLine.textContent = item.url || "";
+
+        const date = document.createElement("span");
+        date.className = "info-link-date";
+        date.textContent = formatShortDate(item.createdAt);
+
+        body.appendChild(host);
+        body.appendChild(urlLine);
+        body.appendChild(date);
+        a.appendChild(icon);
+        a.appendChild(body);
+        li.appendChild(a);
+        recentLinks.appendChild(li);
+      });
+      if (!links.length) {
+        const empty = document.createElement("li");
+        empty.className = "info-empty";
+        empty.textContent = "Chưa có link. Gửi ghi chú có https://...";
+        recentLinks.appendChild(empty);
+      }
     } catch (_error) {
       /* ignore panel errors */
     }
@@ -336,6 +382,7 @@
       });
       messageInput.value = "";
       await loadMessages();
+      await loadStorage();
     } catch (error) {
       showToast(error.message || "Gửi thất bại.", "error");
     } finally {

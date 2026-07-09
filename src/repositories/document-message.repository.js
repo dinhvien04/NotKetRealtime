@@ -138,6 +138,29 @@ async function listRecentByType(type, limit = 12) {
   return result.rows.map(mapRow);
 }
 
+/**
+ * Recent text messages that likely contain URLs (for info panel Links section).
+ * Broad SQL filter; exact URL parse happens in service layer.
+ */
+async function listRecentTextWithLinks(limit = 40) {
+  const result = await query(
+    `SELECT *
+     FROM document_messages
+     WHERE deleted_at IS NULL
+       AND type = 'text'
+       AND body IS NOT NULL
+       AND (
+         body ILIKE '%http://%'
+         OR body ILIKE '%https://%'
+         OR body ILIKE '%www.%'
+       )
+     ORDER BY created_at DESC
+     LIMIT $1`,
+    [limit]
+  );
+  return result.rows.map(mapRow);
+}
+
 module.exports = {
   createTextMessage,
   createFileMessage,
@@ -147,6 +170,7 @@ module.exports = {
   softDelete,
   getStorageUsage,
   listRecentByType,
+  listRecentTextWithLinks,
   DEFAULT_LIMIT,
   MAX_LIMIT
 };

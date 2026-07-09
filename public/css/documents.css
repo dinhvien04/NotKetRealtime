@@ -456,16 +456,23 @@ a {
 .info-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-height: 86px;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 56px;
   padding: 0 1rem;
   border-bottom: 1px solid #2b3139;
 }
 
 .info-header h2 {
   margin: 0;
-  font-size: 1.1rem;
+  flex: 1;
+  text-align: center;
+  font-size: 1.05rem;
   font-weight: 700;
+}
+
+.info-header .icon-btn {
+  flex-shrink: 0;
 }
 
 .info-folder {
@@ -638,6 +645,75 @@ a {
   color: #9aa5b5;
   font-size: 0.85rem;
   padding: 0.5rem 0;
+}
+
+.recent-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.recent-links li {
+  min-width: 0;
+}
+
+.info-link-item {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+  color: #d9dee7;
+  min-width: 0;
+  text-decoration: none;
+}
+
+.info-link-item:hover .info-link-host {
+  color: #93c5fd;
+}
+
+.info-link-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #334155;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.info-link-body {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.info-link-host {
+  display: block;
+  font-weight: 700;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-link-url {
+  display: block;
+  margin-top: 0.12rem;
+  color: #9aa5b5;
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-link-date {
+  display: block;
+  margin-top: 0.12rem;
+  color: #7b8798;
+  font-size: 0.72rem;
 }
 
 .toast {

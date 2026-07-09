@@ -44,7 +44,7 @@
         </div>
         <div class="chat-header-actions">
           <button type="button" id="focus-search" class="icon-btn" title="Tìm kiếm" aria-label="Tìm kiếm">🔍</button>
-          <button type="button" id="toggle-info" class="icon-btn" title="Thông tin" aria-label="Thông tin">ℹ</button>
+          <button type="button" id="toggle-info" class="icon-btn" title="Thông tin thư mục" aria-label="Thông tin thư mục">ℹ</button>
         </div>
       </header>
 
@@ -63,36 +63,44 @@
       </footer>
     </section>
 
-    <aside id="info-panel" class="info-panel">
+    <aside id="info-panel" class="info-panel" aria-label="Thông tin thư mục">
       <div class="info-header">
-        <h2>Thông tin hội thoại</h2>
+        <h2>Thông tin</h2>
         <button type="button" id="info-close" class="icon-btn mobile-only" aria-label="Đóng">✕</button>
       </div>
       <div class="info-folder">
         <div class="folder-avatar">📁</div>
         <h3>My Documents</h3>
-        <p>Lưu và đồng bộ dữ liệu cá nhân trên S3.</p>
+        <p>Ghi chú, ảnh và file cá nhân. Metadata trên Postgres, file trên S3.</p>
       </div>
       <div class="storage-block">
-        <div class="storage-label">Dung lượng</div>
+        <div class="storage-label">Dung lượng lưu trữ</div>
         <div class="storage-bar"><span id="storage-fill"></span></div>
         <div id="storage-text" class="storage-text">—</div>
       </div>
       <section class="info-section media-section">
-        <button type="button" class="info-section-title" data-filter-shortcut="image" aria-label="Xem ảnh và video">
-          <span>Ảnh/Video</span>
+        <button type="button" class="info-section-title" data-filter-shortcut="image" aria-label="Xem ảnh">
+          <span>Ảnh gần đây</span>
           <span aria-hidden="true">▾</span>
         </button>
         <div id="recent-images" class="recent-grid"></div>
-        <button type="button" class="info-view-all" data-filter-shortcut="image">Xem tất cả</button>
+        <button type="button" class="info-view-all" data-filter-shortcut="image">Xem tất cả ảnh</button>
       </section>
       <section class="info-section file-section">
         <button type="button" class="info-section-title" data-filter-shortcut="file" aria-label="Xem file">
-          <span>File</span>
+          <span>File gần đây</span>
           <span aria-hidden="true">▾</span>
         </button>
         <ul id="recent-files" class="recent-files"></ul>
-        <button type="button" class="info-view-all" data-filter-shortcut="file">Xem tất cả</button>
+        <button type="button" class="info-view-all" data-filter-shortcut="file">Xem tất cả file</button>
+      </section>
+      <section class="info-section link-section">
+        <button type="button" class="info-section-title" data-filter-shortcut="text" aria-label="Xem link">
+          <span>Link</span>
+          <span aria-hidden="true">▾</span>
+        </button>
+        <ul id="recent-links" class="recent-links"></ul>
+        <button type="button" class="info-view-all" data-filter-shortcut="text">Xem ghi chú có link</button>
       </section>
     </aside>
   </div>
