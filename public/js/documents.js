@@ -62,17 +62,21 @@
   }
 
   /**
-   * Parse and allow only http/https URLs for info-panel links.
-   * @returns {string|null} normalized href or null if unsafe/invalid
+   * Allow only http/https. Returns the original trimmed string on success
+   * (do NOT rebuild via URL.href — that can re-encode query strings and
+   * break S3 presigned signatures).
+   * @returns {string|null}
    */
   function safeHttpUrl(raw) {
     if (!raw || typeof raw !== "string") return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
     try {
-      const parsed = new URL(raw.trim());
+      const parsed = new URL(trimmed);
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
         return null;
       }
-      return parsed.href;
+      return trimmed;
     } catch (_error) {
       return null;
     }
@@ -236,11 +240,12 @@
         });
         url = refreshed.fileUrl || url;
       }
-      if (url) {
-        window.open(url, "_blank", "noopener,noreferrer");
-      } else {
-        showToast("Không có URL file.", "error");
+      const safe = safeHttpUrl(url);
+      if (!safe) {
+        showToast("URL file không hợp lệ", "error");
+        return;
       }
+      window.open(safe, "_blank", "noopener,noreferrer");
     } catch (error) {
       showToast(error.message || "Không mở được file.", "error");
     }
