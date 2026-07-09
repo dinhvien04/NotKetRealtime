@@ -47,7 +47,7 @@ Open `http://localhost:3000`.
 | `MIGRATION_DATABASE_URL` | Optional; defaults to `DATABASE_URL` |
 | `APP_OPEN_MODE` | **`true` = demo only.** Anyone with the link can upload to **your** S3. **Do not use for real production data.** |
 | `ALLOW_PUBLIC_DEMO_UPLOADS` | Required **in addition** to open mode when `NODE_ENV=production`. Default fail-fast blocks public open mode in production. |
-| `APP_ACCESS_KEY` | Required when `APP_OPEN_MODE=false` (min 32 chars in production) |
+| `APP_ACCESS_KEY` | Shared app gate when `APP_OPEN_MODE=false` (min 32 chars in production). **Not** multi-user login: **anyone who knows the key can use the whole app** (read/upload/delete). Treat it like a password and rotate if leaked. |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION` | Private bucket recommended |
 | `S3_ENDPOINT` / `S3_FORCE_PATH_STYLE` | For S3-compatible providers |
 | `S3_PUBLIC_BASE_URL` | Optional CDN/public base; otherwise signed GET URLs |
@@ -64,6 +64,8 @@ Never use for personal/production data. In production the process **exits on sta
 **MODE B — access key** (`APP_OPEN_MODE=false`) — **recommended for any public deploy**  
 User enters a shared app key once on the home page; it is stored in `localStorage` as `notket_access_key` and sent as header `X-App-Access-Key`. No cookies, JWT, or user table.
 
+**`APP_ACCESS_KEY` is not strong multi-user auth.** It is a single shared secret for the whole app. There are no per-user accounts, roles, or audit of “who” used the key. Anyone with the key has full access (send text, upload to your S3, delete messages). Do not share the key publicly; change it if exposed.
+
 Never put AWS secrets in the frontend. Never commit `.env`.
 
 ## S3 CORS (production checklist)
@@ -73,13 +75,14 @@ Browser **PUT** goes **directly to S3** (not through Vercel). The bucket **must*
 ### Checklist
 
 1. [ ] Bucket is **private** (no public-read ACL / public policy for objects).
-2. [ ] CORS `AllowedOrigins` includes **exact** production URL(s), e.g. `https://not-ket-realtime.vercel.app` (and custom domain if any).
-3. [ ] CORS includes local origin when developing: `http://localhost:3000`.
-4. [ ] `AllowedMethods` includes **`PUT`**, **`GET`**, **`HEAD`**.
-5. [ ] `AllowedHeaders` is `*` (or at least `Content-Type` and any headers the browser sends on PUT).
-6. [ ] `ExposeHeaders` includes **`ETag`**.
-7. [ ] After changing CORS, hard-refresh the browser and retry upload (failed OPTIONS = CORS misconfig).
-8. [ ] App env `APP_BASE_URL` / `CLIENT_ORIGIN` match the origins you listed (CSP `connect-src` needs the S3 host too — set `S3_BUCKET` + `S3_REGION` or `S3_ENDPOINT`).
+2. [ ] CORS `AllowedOrigins` includes **exact** production URL(s), e.g. `https://not-ket-realtime.vercel.app`.
+3. [ ] **Custom domain:** if the app is served from e.g. `https://docs.example.com`, add **that exact origin** to S3 CORS `AllowedOrigins` **and** to app env `CLIENT_ORIGIN` / `APP_BASE_URL` (comma-separated if multiple). Mismatch → browser PUT fails with CORS.
+4. [ ] CORS includes local origin when developing: `http://localhost:3000`.
+5. [ ] `AllowedMethods` includes **`PUT`**, **`GET`**, **`HEAD`**.
+6. [ ] `AllowedHeaders` is `*` (or at least `Content-Type` and any headers the browser sends on PUT).
+7. [ ] `ExposeHeaders` includes **`ETag`**.
+8. [ ] After changing CORS, hard-refresh the browser and retry upload (failed OPTIONS / toast “Kiểm tra S3 CORS AllowedOrigins” = CORS misconfig).
+9. [ ] CSP: set `S3_BUCKET` + `S3_REGION` (or `S3_ENDPOINT`) so `connect-src` allows the S3 host.
 
 ### Example CORS JSON
 
@@ -88,7 +91,8 @@ Browser **PUT** goes **directly to S3** (not through Vercel). The bucket **must*
   {
     "AllowedOrigins": [
       "http://localhost:3000",
-      "https://not-ket-realtime.vercel.app"
+      "https://not-ket-realtime.vercel.app",
+      "https://docs.example.com"
     ],
     "AllowedMethods": ["PUT", "GET", "HEAD"],
     "AllowedHeaders": ["*"],
@@ -98,7 +102,14 @@ Browser **PUT** goes **directly to S3** (not through Vercel). The bucket **must*
 ]
 ```
 
-Replace the Vercel hostname with **your** production domain.  
+Replace hostnames with **your** Vercel URL and **custom domain** (if any).  
+Matching Vercel env example:
+
+```env
+APP_BASE_URL=https://docs.example.com
+CLIENT_ORIGIN=https://docs.example.com,https://not-ket-realtime.vercel.app
+```
+
 Reads use **signed GET** URLs (unless you set `S3_PUBLIC_BASE_URL`).
 
 ## Scripts
@@ -148,16 +159,20 @@ Pending uploads are stored in Postgres table `document_uploads` (not in-memory) 
 8. Network tab: no AWS secret / access key in JS bundles
 
 ### Uploads & validation (local or Vercel)
-1. Upload real **PNG/JPG ~5–6MB** (near `MAX_IMAGE_BYTES`)
-2. Upload real **PDF** and **TXT** near `MAX_FILE_BYTES` (default 10MB; use 6MB if Vercel times out)
-3. Fake `image/png` with text body → **reject**
-4. Extensions **`.svg` / `.html` / `.zip` / `.js` / `.exe`** → **reject**
-5. If confirm step times out on large files: set `MAX_FILE_BYTES=6291456` or keep image/PDF prefix validation (already default)
+1. Upload real **PNG/JPG ~5–6MB** (near `MAX_IMAGE_BYTES`) — progress shows upload % then **“Đang kiểm tra file...”**
+2. Upload real **PDF** and **TXT** near `MAX_FILE_BYTES` (default 10MB)
+3. After upload, **click open** → signed GET in new tab works
+4. Fake `image/png` with text body → **reject**
+5. Extensions **`.svg` / `.html` / `.zip` / `.js` / `.exe`** → **reject**
+6. If confirm step times out on large files on Vercel: set  
+   `MAX_FILE_BYTES=6291456`  
+   (image/PDF already use 8KB prefix validation)
 
 ### S3 + Vercel
-1. CORS production origin (see checklist above)
+1. CORS includes Vercel **and** custom domain (if any); `CLIENT_ORIGIN` / `APP_BASE_URL` match
 2. Presigned PUT succeeds from browser (Network → S3 host, status 200)
-3. Refresh page → history still loads from Neon; files still open via signed GET
+3. Bad CORS → toast: **“Kiểm tra S3 CORS AllowedOrigins…”**
+4. Refresh page → history from Neon; files still open via signed GET
 
 ## License
 

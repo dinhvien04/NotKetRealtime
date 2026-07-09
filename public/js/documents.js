@@ -429,6 +429,21 @@
     }
   }
 
+  function formatUploadError(error) {
+    const msg = (error && error.message) || "Upload thất bại.";
+    const lower = msg.toLowerCase();
+    if (
+      error?.code === "S3_CORS" ||
+      lower.includes("cors") ||
+      lower.includes("network") ||
+      lower.includes("failed to fetch") ||
+      lower.includes("networkerror")
+    ) {
+      return "Kiểm tra S3 CORS AllowedOrigins (thêm domain Vercel/custom vào bucket CORS).";
+    }
+    return msg;
+  }
+
   async function handleFile(file) {
     if (!file) return;
     const kind = file.type && file.type.startsWith("image/") ? "image" : "file";
@@ -438,7 +453,8 @@
         setUploadProgress(true, pct, `Đang tải ${file.name}... ${pct}%`);
       });
 
-      setUploadProgress(true, 100, "Đang xác nhận...");
+      // Keep bar visible while backend Head/GetObject + content validation runs
+      setUploadProgress(true, 100, "Đang kiểm tra file...");
       await api("/api/messages/file", {
         method: "POST",
         body: JSON.stringify({
@@ -455,7 +471,7 @@
       await loadMessages();
       await loadStorage();
     } catch (error) {
-      showToast(error.message || "Upload thất bại.", "error");
+      showToast(formatUploadError(error), "error");
     } finally {
       setUploadProgress(false);
       fileInput.value = "";

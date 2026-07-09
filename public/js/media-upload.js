@@ -32,12 +32,27 @@
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve();
-        } else {
-          reject(new Error(`Upload S3 thất bại (${xhr.status}).`));
+          return;
         }
+        // 0 often means CORS/network blocked the response body
+        if (xhr.status === 0) {
+          const err = new Error(
+            "Upload S3 bị chặn (CORS/network). Kiểm tra S3 CORS AllowedOrigins."
+          );
+          err.code = "S3_CORS";
+          reject(err);
+          return;
+        }
+        reject(new Error(`Upload S3 thất bại (${xhr.status}).`));
       };
 
-      xhr.onerror = () => reject(new Error("Lỗi mạng khi upload S3."));
+      xhr.onerror = () => {
+        const err = new Error(
+          "Lỗi mạng khi upload S3. Kiểm tra S3 CORS AllowedOrigins."
+        );
+        err.code = "S3_CORS";
+        reject(err);
+      };
       xhr.send(file);
     });
   }
