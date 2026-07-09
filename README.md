@@ -18,6 +18,8 @@ Personal documents chat for a **single user** — no login, no multi-user chat, 
 - Optional access key (`X-App-Access-Key`) for public deploys
 - REST-only (no Socket.IO) — easy on Vercel
 - Rate limits: light on GET messages, stricter on writes + upload sign
+- Links panel: extracts `http(s)` / `www.` from text notes (sanitized; no `javascript:`)
+- S3 content check: full body for text/Office; first 8KB magic-byte check for image/PDF (Vercel-friendly)
 
 ## Setup
 

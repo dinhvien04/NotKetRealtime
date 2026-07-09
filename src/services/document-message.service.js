@@ -176,14 +176,27 @@ async function getStorageUsage() {
   };
 }
 
+/** Scan this many recent URL-ish text messages when building the Links panel. */
+const RECENT_TEXT_WITH_LINKS_SCAN = 100;
+/** Max distinct links returned to the UI. */
+const RECENT_LINKS_UI_MAX = 12;
+
+// Only http(s) and www. — never javascript:, data:, etc.
 const URL_IN_TEXT =
-  /\b((?:https?:\/\/|www\.)[^\s<>"'`]+)/gi;
+  /\b((?:https?:\/\/|www\.)[^\s<>"'`\[\]{}]+)/gi;
+
+const TRAILING_URL_JUNK = /[),.;!?'"\]}]+$/;
 
 function normalizeUrl(raw) {
   let url = String(raw || "").trim();
-  // strip trailing punctuation common in notes
-  url = url.replace(/[),.;!?]+$/g, "");
+  // Strip trailing punctuation / brackets / quotes common in notes and markdown
+  while (TRAILING_URL_JUNK.test(url)) {
+    url = url.replace(TRAILING_URL_JUNK, "");
+  }
   if (!url) return null;
+  if (/^javascript:/i.test(url) || /^data:/i.test(url) || /^vbscript:/i.test(url)) {
+    return null;
+  }
   if (url.startsWith("www.")) {
     url = `https://${url}`;
   }
@@ -225,7 +238,7 @@ async function getRecentMedia() {
   const [images, files, textWithLinks] = await Promise.all([
     documentMessageRepo.listRecentByType("image", 12),
     documentMessageRepo.listRecentByType("file", 12),
-    documentMessageRepo.listRecentTextWithLinks(40)
+    documentMessageRepo.listRecentTextWithLinks(RECENT_TEXT_WITH_LINKS_SCAN)
   ]);
 
   const links = [];
@@ -241,9 +254,9 @@ async function getRecentMedia() {
         body: message.body,
         createdAt: message.createdAt
       });
-      if (links.length >= 12) break;
+      if (links.length >= RECENT_LINKS_UI_MAX) break;
     }
-    if (links.length >= 12) break;
+    if (links.length >= RECENT_LINKS_UI_MAX) break;
   }
 
   return {
@@ -263,5 +276,7 @@ module.exports = {
   getRecentMedia,
   extractLinksFromBody,
   normalizeUrl,
-  MAX_TEXT_LENGTH
+  MAX_TEXT_LENGTH,
+  RECENT_TEXT_WITH_LINKS_SCAN,
+  RECENT_LINKS_UI_MAX
 };

@@ -142,7 +142,7 @@ async function listRecentByType(type, limit = 12) {
  * Recent text messages that likely contain URLs (for info panel Links section).
  * Broad SQL filter; exact URL parse happens in service layer.
  */
-async function listRecentTextWithLinks(limit = 40) {
+async function listRecentTextWithLinks(limit = 100) {
   const result = await query(
     `SELECT *
      FROM document_messages

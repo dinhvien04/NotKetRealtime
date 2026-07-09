@@ -61,6 +61,17 @@
     while (node.firstChild) node.removeChild(node.firstChild);
   }
 
+  /** Only allow http/https hrefs in the info panel (defense in depth vs API data). */
+  function isSafeHttpUrl(value) {
+    if (!value || typeof value !== "string") return false;
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch (_error) {
+      return false;
+    }
+  }
+
   function ensureAccess() {
     if (openMode) return true;
     if (getAccessKey()) return true;
@@ -323,12 +334,13 @@
       }
 
       clearNode(recentLinks);
-      const links = data.links || [];
-      links.slice(0, 8).forEach((item) => {
+      const links = (data.links || []).filter((item) => isSafeHttpUrl(item && item.url));
+      links.slice(0, 12).forEach((item) => {
+        const safeUrl = item.url;
         const li = document.createElement("li");
         const a = document.createElement("a");
         a.className = "info-link-item";
-        a.href = item.url || "#";
+        a.href = safeUrl;
         a.target = "_blank";
         a.rel = "noopener noreferrer";
 
@@ -342,11 +354,11 @@
 
         const host = document.createElement("span");
         host.className = "info-link-host";
-        host.textContent = item.host || item.url || "link";
+        host.textContent = item.host || safeUrl;
 
         const urlLine = document.createElement("span");
         urlLine.className = "info-link-url";
-        urlLine.textContent = item.url || "";
+        urlLine.textContent = safeUrl;
 
         const date = document.createElement("span");
         date.className = "info-link-date";

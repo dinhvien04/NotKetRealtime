@@ -243,7 +243,7 @@ async function run() {
     /./
   );
 
-  // truncated body vs ContentLength rejects
+  // image/pdf use prefix Range — truncated fake bytes still reject on magic
   setS3ClientForTests(
     createMockS3Client(
       { ContentLength: 100, ContentType: "image/png" },
@@ -258,6 +258,25 @@ async function run() {
         expectedMimeType: "image/png",
         originalName: "trunc.png",
         expectedSize: 100
+      }),
+    /không khớp|nội dung|loại file|xác định/i
+  );
+
+  // text still requires full body — length mismatch rejects
+  setS3ClientForTests(
+    createMockS3Client(
+      { ContentLength: 20, ContentType: "text/plain" },
+      null,
+      Buffer.from("short")
+    )
+  );
+  await assert.rejects(
+    () =>
+      verifyUploadedObjectContent({
+        fileKey: "documents/2026/07/trunc.txt",
+        expectedMimeType: "text/plain",
+        originalName: "trunc.txt",
+        expectedSize: 20
       }),
     /không đọc đủ|khớp/i
   );
