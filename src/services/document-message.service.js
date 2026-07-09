@@ -185,14 +185,18 @@ const RECENT_LINKS_UI_MAX = 12;
 const URL_IN_TEXT =
   /\b((?:https?:\/\/|www\.)[^\s<>"'`\[\]{}]+)/gi;
 
-const TRAILING_URL_JUNK = /[),.;!?'"\]}]+$/;
+// Trailing junk from notes/markdown: ) ] \ . , ; ! ? }
+// (escaped ] and \ inside the character class)
+const TRAILING_URL_JUNK = /[)\\\].,;!?}]+$/g;
 
 function normalizeUrl(raw) {
   let url = String(raw || "").trim();
-  // Strip trailing punctuation / brackets / quotes common in notes and markdown
-  while (TRAILING_URL_JUNK.test(url)) {
+  // Strip trailing punctuation / brackets common in notes (repeat until stable)
+  let prev;
+  do {
+    prev = url;
     url = url.replace(TRAILING_URL_JUNK, "");
-  }
+  } while (url !== prev);
   if (!url) return null;
   if (/^javascript:/i.test(url) || /^data:/i.test(url) || /^vbscript:/i.test(url)) {
     return null;

@@ -61,14 +61,20 @@
     while (node.firstChild) node.removeChild(node.firstChild);
   }
 
-  /** Only allow http/https hrefs in the info panel (defense in depth vs API data). */
-  function isSafeHttpUrl(value) {
-    if (!value || typeof value !== "string") return false;
+  /**
+   * Parse and allow only http/https URLs for info-panel links.
+   * @returns {string|null} normalized href or null if unsafe/invalid
+   */
+  function safeHttpUrl(raw) {
+    if (!raw || typeof raw !== "string") return null;
     try {
-      const parsed = new URL(value);
-      return parsed.protocol === "http:" || parsed.protocol === "https:";
+      const parsed = new URL(raw.trim());
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return null;
+      }
+      return parsed.href;
     } catch (_error) {
-      return false;
+      return null;
     }
   }
 
@@ -334,13 +340,16 @@
       }
 
       clearNode(recentLinks);
-      const links = (data.links || []).filter((item) => isSafeHttpUrl(item && item.url));
-      links.slice(0, 12).forEach((item) => {
-        const safeUrl = item.url;
+      const rawLinks = data.links || [];
+      let renderedLinks = 0;
+      rawLinks.slice(0, 12).forEach((item) => {
+        const href = safeHttpUrl(item && item.url);
+        if (!href) return;
+
         const li = document.createElement("li");
         const a = document.createElement("a");
         a.className = "info-link-item";
-        a.href = safeUrl;
+        a.href = href;
         a.target = "_blank";
         a.rel = "noopener noreferrer";
 
@@ -354,11 +363,11 @@
 
         const host = document.createElement("span");
         host.className = "info-link-host";
-        host.textContent = item.host || safeUrl;
+        host.textContent = item.host || href;
 
         const urlLine = document.createElement("span");
         urlLine.className = "info-link-url";
-        urlLine.textContent = safeUrl;
+        urlLine.textContent = href;
 
         const date = document.createElement("span");
         date.className = "info-link-date";
@@ -371,8 +380,9 @@
         a.appendChild(body);
         li.appendChild(a);
         recentLinks.appendChild(li);
+        renderedLinks += 1;
       });
-      if (!links.length) {
+      if (!renderedLinks) {
         const empty = document.createElement("li");
         empty.className = "info-empty";
         empty.textContent = "Chưa có link. Gửi ghi chú có https://...";
