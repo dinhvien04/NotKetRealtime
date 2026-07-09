@@ -445,10 +445,12 @@ a {
 .info-panel {
   background: #1f242b;
   border-left: 1px solid #2b3139;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   color: #d9dee7;
+  min-width: 0;
 }
 
 .info-header {
@@ -564,10 +566,12 @@ a {
 
 .info-file-link {
   display: grid;
-  grid-template-columns: 44px 1fr auto;
+  grid-template-columns: 44px minmax(0, 1fr);
   gap: 0.75rem;
   align-items: center;
   color: #d9dee7;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .info-file-icon {
@@ -586,8 +590,16 @@ a {
   background: #38bdf8;
 }
 
-.info-file-name {
+.info-file-link > span:nth-child(2) {
   min-width: 0;
+  display: block;
+  overflow: hidden;
+}
+
+.info-file-name {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -601,9 +613,7 @@ a {
 }
 
 .info-file-date {
-  color: #9aa5b5;
-  font-size: 0.78rem;
-  white-space: nowrap;
+  display: none;
 }
 
 .info-view-all {
