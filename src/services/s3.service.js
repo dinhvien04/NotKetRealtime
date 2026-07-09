@@ -23,6 +23,7 @@ function getStorageConfigError() {
 function buildS3ClientConfig() {
   const clientConfig = {
     region: config.s3Region,
+    requestChecksumCalculation: "WHEN_REQUIRED",
     credentials: {
       accessKeyId: config.s3AccessKeyId,
       secretAccessKey: config.s3SecretAccessKey
