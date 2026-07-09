@@ -257,6 +257,9 @@ a {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  height: 100vh;
+  overflow: hidden;
   background: var(--bg);
 }
 
@@ -291,8 +294,10 @@ a {
 }
 
 .message-list {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 1rem;
   display: flex;
   flex-direction: column;
