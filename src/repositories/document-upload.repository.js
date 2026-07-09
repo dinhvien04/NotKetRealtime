@@ -23,22 +23,23 @@ async function createPendingUpload({
   kind,
   expiresAt
 }) {
-  const result = await query(
-    `INSERT INTO document_uploads (
-       file_key, file_name, mime_type, file_size, kind, status, expires_at
-     ) VALUES ($1, $2, $3, $4, $5, 'pending', $6)
-     ON CONFLICT (file_key) DO UPDATE SET
-       file_name = EXCLUDED.file_name,
-       mime_type = EXCLUDED.mime_type,
-       file_size = EXCLUDED.file_size,
-       kind = EXCLUDED.kind,
-       status = 'pending',
-       expires_at = EXCLUDED.expires_at,
-       consumed_at = NULL
-     RETURNING *`,
-    [fileKey, fileName, mimeType, fileSize, kind, expiresAt]
-  );
-  return mapRow(result.rows[0]);
+  try {
+    const result = await query(
+      `INSERT INTO document_uploads (
+         file_key, file_name, mime_type, file_size, kind, status, expires_at
+       ) VALUES ($1, $2, $3, $4, $5, 'pending', $6)
+       RETURNING *`,
+      [fileKey, fileName, mimeType, fileSize, kind, expiresAt]
+    );
+    return mapRow(result.rows[0]);
+  } catch (error) {
+    if (error && error.code === "23505") {
+      const conflict = new Error("fileKey đã tồn tại (pending upload collision).");
+      conflict.status = 409;
+      throw conflict;
+    }
+    throw error;
+  }
 }
 
 async function findPendingUpload(fileKey) {
@@ -71,9 +72,24 @@ async function expireOldUploads() {
   return result.rowCount || 0;
 }
 
+/**
+ * Sum file_size of pending uploads that are not yet expired.
+ * Used for storage quota so reserved pending space cannot be double-spent.
+ */
+async function getPendingUploadBytes() {
+  const result = await query(
+    `SELECT COALESCE(SUM(file_size), 0)::bigint AS pending_bytes
+     FROM document_uploads
+     WHERE status = 'pending'
+       AND expires_at > now()`
+  );
+  return Number(result.rows[0]?.pending_bytes || 0);
+}
+
 module.exports = {
   createPendingUpload,
   findPendingUpload,
   consumePendingUpload,
-  expireOldUploads
+  expireOldUploads,
+  getPendingUploadBytes
 };

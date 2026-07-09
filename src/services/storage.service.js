@@ -263,28 +263,14 @@ async function verifyUploadedObjectContent({
     throw new Error(`File vượt quá giới hạn ${Math.round(maxBytes / 1024 / 1024)}MB.`);
   }
 
-  const isTextPlain = expectedMimeType === "text/plain";
-  const isOffice =
-    expectedMimeType === "application/msword" ||
-    expectedMimeType ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    expectedMimeType === "application/vnd.ms-excel" ||
-    expectedMimeType ===
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-    expectedMimeType === "application/vnd.ms-powerpoint" ||
-    expectedMimeType ===
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-
-  const fetchFull = isTextPlain || isOffice || realSize <= 1024 * 1024;
-
+  // Content validation always downloads the full object when size is within the
+  // configured per-kind max (default image ≤6MB, file ≤10MB). Partial Range
+  // (e.g. first 8KB) is NOT used: magic-byte prefixes alone cannot reject
+  // polyglot/fake payloads and Office OOXML needs the ZIP central directory.
   const getParams = {
     Bucket: config.s3Bucket,
     Key: fileKey
   };
-  if (!fetchFull) {
-    const prefixBytes = Math.min(8192, realSize);
-    getParams.Range = `bytes=0-${prefixBytes - 1}`;
-  }
 
   let buffer;
   try {
@@ -299,6 +285,10 @@ async function verifyUploadedObjectContent({
       throw new Error("Object chưa tồn tại trên storage.");
     }
     throw new Error(error?.message || "Không thể đọc nội dung file từ storage để xác thực.");
+  }
+
+  if (buffer.length !== realSize) {
+    throw new Error("Không đọc đủ nội dung object từ storage.");
   }
 
   if (!buffer || buffer.length === 0) {

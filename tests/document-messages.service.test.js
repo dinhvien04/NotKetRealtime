@@ -73,6 +73,11 @@ const documentMessageRepo = {
 
 const documentUploadRepo = {
   async createPendingUpload(row) {
+    if (uploads.has(row.fileKey)) {
+      const error = new Error("fileKey đã tồn tại (pending upload collision).");
+      error.status = 409;
+      throw error;
+    }
     const entry = { ...row, status: "pending" };
     uploads.set(row.fileKey, entry);
     return entry;
@@ -90,6 +95,15 @@ const documentUploadRepo = {
   },
   async expireOldUploads() {
     return 0;
+  },
+  async getPendingUploadBytes() {
+    let sum = 0;
+    for (const row of uploads.values()) {
+      if (row.status === "pending" && new Date(row.expiresAt).getTime() > Date.now()) {
+        sum += Number(row.fileSize || 0);
+      }
+    }
+    return sum;
   }
 };
 

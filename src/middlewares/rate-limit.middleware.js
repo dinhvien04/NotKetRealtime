@@ -18,11 +18,23 @@ const messageWriteLimiter = rateLimit({
   legacyHeaders: false,
   message: {
     ok: false,
-    error: "Quá nhiều yêu cầu. Thử lại sau."
+    error: "Quá nhiều yêu cầu ghi. Thử lại sau."
+  }
+});
+
+const messageReadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    ok: false,
+    error: "Quá nhiều yêu cầu đọc. Thử lại sau."
   }
 });
 
 module.exports = {
   uploadSignLimiter,
-  messageWriteLimiter
+  messageWriteLimiter,
+  messageReadLimiter
 };

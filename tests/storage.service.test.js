@@ -21,6 +21,15 @@ const {
   resetS3ClientForTests
 } = require("../src/services/s3.service");
 
+// Minimal valid 1x1 PNG
+const MINI_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64"
+);
+
+// Minimal PDF with magic header
+const MINI_PDF = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n", "utf8");
+
 function createMockS3Client(headResponse, headError = null, getBody = null) {
   return {
     send: async (command) => {
@@ -31,6 +40,7 @@ function createMockS3Client(headResponse, headError = null, getBody = null) {
       }
       if (name === "PutObjectCommand") return {};
       if (name === "GetObjectCommand") {
+        // Full-object validation: Range must not be required
         if (getBody) {
           const { Readable } = require("stream");
           return { Body: Readable.from([getBody]) };
@@ -117,7 +127,7 @@ async function run() {
     /chưa tồn tại/
   );
 
-  // fake png content (text) should reject
+  // fake PNG content (text bytes, image/png declared) should reject
   setS3ClientForTests(
     createMockS3Client(
       { ContentLength: 12, ContentType: "image/png" },
@@ -136,6 +146,57 @@ async function run() {
       }),
     /không khớp|nội dung|loại file/i
   );
+
+  // fake PDF: text disguised as application/pdf
+  const fakePdf = Buffer.from("this is not a pdf file at all");
+  setS3ClientForTests(
+    createMockS3Client(
+      { ContentLength: fakePdf.length, ContentType: "application/pdf" },
+      null,
+      fakePdf
+    )
+  );
+
+  await assert.rejects(
+    () =>
+      verifyUploadedObjectContent({
+        fileKey: "documents/2026/07/fake.pdf",
+        expectedMimeType: "application/pdf",
+        originalName: "fake.pdf",
+        expectedSize: fakePdf.length
+      }),
+    /không khớp|nội dung|loại file|xác định/i
+  );
+
+  // real mini PNG accepts
+  setS3ClientForTests(
+    createMockS3Client(
+      { ContentLength: MINI_PNG.length, ContentType: "image/png" },
+      null,
+      MINI_PNG
+    )
+  );
+  await verifyUploadedObjectContent({
+    fileKey: "documents/2026/07/ok.png",
+    expectedMimeType: "image/png",
+    originalName: "ok.png",
+    expectedSize: MINI_PNG.length
+  });
+
+  // real mini PDF accepts
+  setS3ClientForTests(
+    createMockS3Client(
+      { ContentLength: MINI_PDF.length, ContentType: "application/pdf" },
+      null,
+      MINI_PDF
+    )
+  );
+  await verifyUploadedObjectContent({
+    fileKey: "documents/2026/07/ok.pdf",
+    expectedMimeType: "application/pdf",
+    originalName: "ok.pdf",
+    expectedSize: MINI_PDF.length
+  });
 
   // text with null byte rejects
   setS3ClientForTests(
@@ -160,7 +221,11 @@ async function run() {
   // generic zip declared as docx rejects
   setS3ClientForTests(
     createMockS3Client(
-      { ContentLength: 30, ContentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+      {
+        ContentLength: 30,
+        ContentType:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      },
       null,
       Buffer.from("PK\u0003\u0004not-a-real-docx-structure!!!!!")
     )
@@ -178,7 +243,26 @@ async function run() {
     /./
   );
 
-  // presigned upload path prefix (use real client for signing only — no network)
+  // truncated body vs ContentLength rejects
+  setS3ClientForTests(
+    createMockS3Client(
+      { ContentLength: 100, ContentType: "image/png" },
+      null,
+      Buffer.from("short")
+    )
+  );
+  await assert.rejects(
+    () =>
+      verifyUploadedObjectContent({
+        fileKey: "documents/2026/07/trunc.png",
+        expectedMimeType: "image/png",
+        originalName: "trunc.png",
+        expectedSize: 100
+      }),
+    /không đọc đủ|khớp/i
+  );
+
+  // presigned upload path prefix
   resetS3ClientForTests();
   const upload = await createPresignedUpload({
     originalName: "note.txt",

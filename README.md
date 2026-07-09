@@ -17,7 +17,7 @@ Personal documents chat for a **single user** — no login, no multi-user chat, 
 - Storage usage meter
 - Optional access key (`X-App-Access-Key`) for public deploys
 - REST-only (no Socket.IO) — easy on Vercel
-- Rate limits on message write + upload sign (mitigate abuse in open mode)
+- Rate limits: light on GET messages, stricter on writes + upload sign
 
 ## Setup
 
@@ -37,7 +37,8 @@ Open `http://localhost:3000`.
 |---|---|
 | `DATABASE_URL` | Neon Postgres |
 | `MIGRATION_DATABASE_URL` | Optional; defaults to `DATABASE_URL` |
-| `APP_OPEN_MODE` | `true` = anyone with the link can use the app (demo only) |
+| `APP_OPEN_MODE` | `true` = **anyone with the link can upload** to your S3 (local/demo only) |
+| `ALLOW_PUBLIC_DEMO_UPLOADS` | Required **in addition** to open mode when `NODE_ENV=production`. Default fail-fast blocks public open mode in production. |
 | `APP_ACCESS_KEY` | Required when `APP_OPEN_MODE=false` (min 32 chars in production) |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION` | Private bucket recommended |
 | `S3_ENDPOINT` / `S3_FORCE_PATH_STYLE` | For S3-compatible providers |
@@ -47,9 +48,10 @@ Open `http://localhost:3000`.
 ### Security modes
 
 **MODE A — open demo** (`APP_OPEN_MODE=true`)  
-Anyone with the URL can upload. **Do not use in production.**
+**Anyone who has the URL can list, send text, and upload files to your S3 bucket.**  
+Use only for local/demo. In production the process **exits on startup** unless you also set `ALLOW_PUBLIC_DEMO_UPLOADS=true` (explicit opt-in, still strongly discouraged).
 
-**MODE B — access key** (`APP_OPEN_MODE=false`)  
+**MODE B — access key** (`APP_OPEN_MODE=false`) — **recommended for any public deploy**  
 User enters a shared app key once on the home page; it is stored in `localStorage` as `notket_access_key` and sent as header `X-App-Access-Key`. No cookies, JWT, or user table.
 
 Never put AWS secrets in the frontend. Never commit `.env`.

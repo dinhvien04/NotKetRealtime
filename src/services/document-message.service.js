@@ -117,6 +117,8 @@ async function createFileMessage(payload) {
     expectedSize: Number(size)
   });
 
+  // Pending row already reserved this size at sign time; after consume the
+  // pending sum drops and committed usage increases by the same amount.
   const used = await documentMessageRepo.getStorageUsage();
   if (used + Number(size) > config.storageLimitBytes) {
     const error = new Error("Đã vượt giới hạn dung lượng lưu trữ.");

@@ -15,6 +15,10 @@ function validateProductionConfig() {
   const errors = [];
   const isProduction = process.env.NODE_ENV === "production";
   const openMode = parseBooleanEnv(process.env.APP_OPEN_MODE, false);
+  const allowPublicDemo = parseBooleanEnv(
+    process.env.ALLOW_PUBLIC_DEMO_UPLOADS,
+    false
+  );
 
   if (!process.env.DATABASE_URL) {
     errors.push("Thiếu DATABASE_URL.");
@@ -30,10 +34,20 @@ function validateProductionConfig() {
     errors.push("Thiếu S3_SECRET_ACCESS_KEY.");
   }
 
+  if (isProduction && openMode && !allowPublicDemo) {
+    errors.push(
+      "Production với APP_OPEN_MODE=true bị chặn mặc định. " +
+        "Ai có link cũng có thể upload lên S3. " +
+        "Chỉ bật khi cố ý demo công khai bằng ALLOW_PUBLIC_DEMO_UPLOADS=true."
+    );
+  }
+
   if (isProduction && !openMode) {
     const key = process.env.APP_ACCESS_KEY || "";
     if (key.length < 32) {
-      errors.push("Production với APP_OPEN_MODE=false yêu cầu APP_ACCESS_KEY dài tối thiểu 32 ký tự.");
+      errors.push(
+        "Production với APP_OPEN_MODE=false yêu cầu APP_ACCESS_KEY dài tối thiểu 32 ký tự."
+      );
     }
   }
 
@@ -113,6 +127,9 @@ const config = {
   },
   get appOpenMode() {
     return parseBooleanEnv(process.env.APP_OPEN_MODE, false);
+  },
+  get allowPublicDemoUploads() {
+    return parseBooleanEnv(process.env.ALLOW_PUBLIC_DEMO_UPLOADS, false);
   },
   get appAccessKey() {
     return process.env.APP_ACCESS_KEY || "";

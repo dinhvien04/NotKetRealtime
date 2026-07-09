@@ -3,18 +3,19 @@ const app = require("./src/app");
 const { closePool } = require("./src/db");
 const logger = require("./src/utils/logger");
 
-if (config.isProduction && config.appOpenMode) {
-  logger.warn(
-    "CẢNH BÁO: APP_OPEN_MODE=true trong production — ai có link cũng có thể upload lên S3 của bạn."
-  );
-}
-
 const configErrors = config.validateProductionConfig();
 if (config.isProduction && configErrors.length) {
   for (const err of configErrors) {
     logger.error(err);
   }
   process.exit(1);
+}
+
+if (config.isProduction && config.appOpenMode && config.allowPublicDemoUploads) {
+  logger.warn(
+    "CẢNH BÁO NGHIÊM TRỌNG: APP_OPEN_MODE=true + ALLOW_PUBLIC_DEMO_UPLOADS=true — " +
+      "ai có link production cũng có thể upload file lên S3 của bạn."
+  );
 }
 
 let isShuttingDown = false;

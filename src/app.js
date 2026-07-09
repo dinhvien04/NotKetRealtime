@@ -10,10 +10,7 @@ const storageRoutes = require("./routes/storage.routes");
 const healthRoutes = require("./routes/health.routes");
 const appAccess = require("./middlewares/app-access.middleware");
 const requestLoggingMiddleware = require("./middlewares/request-logging.middleware");
-const {
-  uploadSignLimiter,
-  messageWriteLimiter
-} = require("./middlewares/rate-limit.middleware");
+const { uploadSignLimiter } = require("./middlewares/rate-limit.middleware");
 
 function getOrigin(value) {
   if (!value) return null;
@@ -24,6 +21,10 @@ function getOrigin(value) {
   }
 }
 
+/**
+ * CSP connect-src for S3: only concrete bucket / endpoint origins.
+ * Production never adds https://*.amazonaws.com wildcards.
+ */
 function getS3ConnectSrc() {
   const sources = new Set();
 
@@ -38,12 +39,11 @@ function getS3ConnectSrc() {
   }
 
   if (!config.s3Endpoint && config.s3Bucket && config.s3Region && config.s3Region !== "auto") {
+    // Virtual-hosted–style + path-style for the same region/bucket only (no *.amazonaws.com wildcards).
     sources.add(`https://${config.s3Bucket}.s3.${config.s3Region}.amazonaws.com`);
-    sources.add(`https://*.s3.${config.s3Region}.amazonaws.com`);
     sources.add(`https://s3.${config.s3Region}.amazonaws.com`);
   }
 
-  sources.add("https://*.amazonaws.com");
   return [...sources];
 }
 
@@ -95,7 +95,7 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.use("/", webRoutes);
 app.use("/api/app", appRoutes);
-app.use("/api/messages", appAccess, messageWriteLimiter, messageRoutes);
+app.use("/api/messages", appAccess, messageRoutes);
 app.use("/api/uploads", appAccess, uploadSignLimiter, uploadRoutes);
 app.use("/api/storage", appAccess, storageRoutes);
 app.use("/health", healthRoutes);
@@ -131,3 +131,4 @@ app.use((error, req, res, next) => {
 });
 
 module.exports = app;
+module.exports.getS3ConnectSrc = getS3ConnectSrc;
