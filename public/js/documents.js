@@ -47,6 +47,15 @@
     });
   }
 
+  function formatShortDate(dateValue) {
+    if (!dateValue) return "";
+    return new Date(dateValue).toLocaleDateString("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric"
+    });
+  }
+
   function clearNode(node) {
     while (node.firstChild) node.removeChild(node.firstChild);
   }
@@ -251,8 +260,8 @@
       storageText.textContent = `${formatFileSize(used)} / ${formatFileSize(limit)} (${pct}%)`;
 
       clearNode(recentImages);
-      (data.images || []).forEach((item) => {
-        if (!item.fileUrl) return;
+      const images = (data.images || []).filter((item) => item.fileUrl);
+      images.slice(0, 8).forEach((item) => {
         const img = document.createElement("img");
         img.loading = "lazy";
         img.alt = item.fileName || "Ảnh";
@@ -260,21 +269,57 @@
         img.addEventListener("click", () => openFile(item));
         recentImages.appendChild(img);
       });
+      if (!images.length) {
+        const empty = document.createElement("div");
+        empty.className = "info-empty";
+        empty.textContent = "Chưa có ảnh/video.";
+        recentImages.appendChild(empty);
+      }
 
       clearNode(recentFiles);
-      (data.files || []).forEach((item) => {
+      const files = data.files || [];
+      files.slice(0, 4).forEach((item) => {
         const li = document.createElement("li");
         const a = document.createElement("a");
         a.href = "#";
         a.rel = "noopener noreferrer";
-        a.textContent = item.fileName || "file";
+        a.className = "info-file-link";
         a.addEventListener("click", (event) => {
           event.preventDefault();
           openFile(item);
         });
+
+        const icon = document.createElement("span");
+        const isPdf = (item.mimeType || "").includes("pdf") || /\.pdf$/i.test(item.fileName || "");
+        icon.className = `info-file-icon${isPdf ? "" : " generic"}`;
+        icon.textContent = isPdf ? "PDF" : "FILE";
+
+        const body = document.createElement("span");
+        const name = document.createElement("span");
+        name.className = "info-file-name";
+        name.textContent = item.fileName || "file";
+        const meta = document.createElement("span");
+        meta.className = "info-file-meta";
+        meta.textContent = formatFileSize(item.fileSize);
+        body.appendChild(name);
+        body.appendChild(meta);
+
+        const date = document.createElement("span");
+        date.className = "info-file-date";
+        date.textContent = formatShortDate(item.createdAt);
+
+        a.appendChild(icon);
+        a.appendChild(body);
+        a.appendChild(date);
         li.appendChild(a);
         recentFiles.appendChild(li);
       });
+      if (!files.length) {
+        const empty = document.createElement("li");
+        empty.className = "info-empty";
+        empty.textContent = "Chưa có file.";
+        recentFiles.appendChild(empty);
+      }
     } catch (_error) {
       /* ignore panel errors */
     }
@@ -371,10 +416,17 @@
 
     filterBtns.forEach((btn) => {
       btn.addEventListener("click", () => {
-        filterBtns.forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
         currentType = btn.dataset.type || "all";
+        filterBtns.forEach((b) => b.classList.toggle("active", b === btn));
         loadMessages();
+      });
+    });
+
+    document.querySelectorAll("[data-filter-shortcut]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const type = btn.dataset.filterShortcut || "all";
+        const target = document.querySelector(`.filter-btn[data-type="${type}"]`);
+        if (target) target.click();
       });
     });
 
