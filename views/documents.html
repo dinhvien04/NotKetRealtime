@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Documents · NotKet</title>
+  <link rel="stylesheet" href="/css/documents.css" />
+</head>
+<body class="documents-page">
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="folder-avatar sm">📁</div>
+        <div>
+          <div class="sidebar-title">NotKet</div>
+          <div class="sidebar-sub">Documents</div>
+        </div>
+        <button type="button" id="sidebar-close" class="icon-btn mobile-only" aria-label="Đóng">✕</button>
+      </div>
+
+      <div class="sidebar-search">
+        <input id="search-input" type="search" placeholder="Tìm tin nhắn, file..." />
+      </div>
+
+      <div class="filter-group" role="tablist" aria-label="Bộ lọc">
+        <button type="button" class="filter-btn active" data-type="all">Tất cả</button>
+        <button type="button" class="filter-btn" data-type="image">Ảnh</button>
+        <button type="button" class="filter-btn" data-type="file">File</button>
+        <button type="button" class="filter-btn" data-type="text">Text</button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="/" class="nav-link">← Trang chủ</a>
+      </nav>
+    </aside>
+
+    <section class="chat-main">
+      <header class="chat-header">
+        <button type="button" id="sidebar-open" class="icon-btn mobile-only" aria-label="Menu">☰</button>
+        <div class="folder-avatar sm">📁</div>
+        <div class="chat-header-text">
+          <h1>My Documents</h1>
+          <p>Lưu và đồng bộ dữ liệu cá nhân</p>
+        </div>
+        <div class="chat-header-actions">
+          <button type="button" id="focus-search" class="icon-btn" title="Tìm kiếm" aria-label="Tìm kiếm">🔍</button>
+          <button type="button" id="toggle-info" class="icon-btn" title="Thông tin" aria-label="Thông tin">ℹ</button>
+        </div>
+      </header>
+
+      <div id="message-list" class="message-list" aria-live="polite"></div>
+
+      <div id="upload-progress" class="upload-progress hidden">
+        <div class="upload-progress-bar"><span id="upload-progress-fill"></span></div>
+        <span id="upload-progress-text">Đang tải lên...</span>
+      </div>
+
+      <footer class="composer">
+        <button type="button" id="attach-btn" class="icon-btn" title="Đính kèm" aria-label="Đính kèm">📎</button>
+        <input id="file-input" type="file" class="hidden" accept="image/*,.pdf,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx" />
+        <input id="message-input" type="text" placeholder="Nhập ghi chú..." maxlength="5000" autocomplete="off" />
+        <button type="button" id="send-btn" class="btn btn-primary btn-send">Gửi</button>
+      </footer>
+    </section>
+
+    <aside id="info-panel" class="info-panel">
+      <div class="info-header">
+        <h2>Thông tin</h2>
+        <button type="button" id="info-close" class="icon-btn mobile-only" aria-label="Đóng">✕</button>
+      </div>
+      <div class="info-folder">
+        <div class="folder-avatar">📁</div>
+        <h3>My Documents</h3>
+        <p>Ghi chú, ảnh và file cá nhân — lưu metadata trên Postgres, file trên S3.</p>
+      </div>
+      <div class="storage-block">
+        <div class="storage-label">Dung lượng</div>
+        <div class="storage-bar"><span id="storage-fill"></span></div>
+        <div id="storage-text" class="storage-text">—</div>
+      </div>
+      <div class="info-section">
+        <h4>Ảnh gần đây</h4>
+        <div id="recent-images" class="recent-grid"></div>
+      </div>
+      <div class="info-section">
+        <h4>File gần đây</h4>
+        <ul id="recent-files" class="recent-files"></ul>
+      </div>
+    </aside>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/media-upload.js"></script>
+  <script src="/js/documents.js"></script>
+</body>
+</html>

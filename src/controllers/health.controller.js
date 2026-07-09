@@ -1,6 +1,5 @@
 const config = require("../config/env");
 const { getDatabaseError, query } = require("../db");
-const redisService = require("../services/redis.service");
 
 const startedAt = Date.now();
 
@@ -20,7 +19,6 @@ async function pingDatabase() {
 
 async function buildHealth(statusCodeWhenDegraded = 200) {
   const database = await pingDatabase();
-  const redis = await redisService.ping();
   const ok = database.ok;
 
   return {
@@ -31,8 +29,7 @@ async function buildHealth(statusCodeWhenDegraded = 200) {
       startedAt,
       environment: config.nodeEnv,
       services: {
-        database,
-        redis
+        database
       }
     }
   };

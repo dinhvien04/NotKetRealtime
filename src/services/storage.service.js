@@ -12,23 +12,15 @@ const { getS3Client } = require("./s3.service");
 const {
   getKindFromMimeType,
   getMaxBytesForKind,
-  isAllowedMimeType,
-  isVoiceMimeType
+  isAllowedMimeType
 } = require("../utils/mime");
 const {
   validateUploadedFile,
   extensionFromMimeType,
   hasBlockedExtension
 } = require("../utils/file-magic");
-const { sanitizeFileName, sanitizeSenderId } = require("../utils/filename");
+const { sanitizeFileName } = require("../utils/filename");
 const logger = require("../utils/logger");
-
-const IMAGE_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif"
-]);
 
 function redactPresignedUrl(url) {
   if (typeof url !== "string" || !url) {
@@ -38,7 +30,9 @@ function redactPresignedUrl(url) {
   return url
     .replace(/(X-Amz-Signature=)[^&\s"']+/gi, "$1[REDACTED]")
     .replace(/(X-Amz-Credential=)[^&\s"']+/gi, "$1[REDACTED]")
-    .replace(/(X-Amz-Security-Token=)[^&\s"']+/gi, "$1[REDACTED]");
+    .replace(/(X-Amz-Security-Token=)[^&\s"']+/gi, "$1[REDACTED]")
+    .replace(/(AWSAccessKeyId=)[^&\s"']+/gi, "$1[REDACTED]")
+    .replace(/(Signature=)[^&\s"']+/gi, "$1[REDACTED]");
 }
 
 function validateExtensionForMime(fileName, mimeType) {
@@ -59,14 +53,7 @@ function validateExtensionForMime(fileName, mimeType) {
   throw new Error("Phần mở rộng file không khớp với MIME type.");
 }
 
-function validateUploadMetadata({
-  originalName,
-  mimeType,
-  size,
-  senderId,
-  kind = null,
-  durationMs = null
-}) {
+function validateUploadMetadata({ originalName, mimeType, size, kind = null }) {
   if (!originalName || typeof originalName !== "string") {
     throw new Error("Tên file không hợp lệ.");
   }
@@ -86,66 +73,45 @@ function validateUploadMetadata({
   }
 
   const resolvedKind = getKindFromMimeType(mimeType, kind);
-  const maxBytes = getMaxBytesForKind(resolvedKind);
+  if (resolvedKind !== "image" && resolvedKind !== "file") {
+    throw new Error("Loại upload không hợp lệ.");
+  }
 
+  if (resolvedKind === "image" && !mimeType.startsWith("image/")) {
+    throw new Error("MIME type không hợp lệ cho ảnh.");
+  }
+
+  const maxBytes = getMaxBytesForKind(resolvedKind);
   if (size > maxBytes) {
     throw new Error(
       `File vượt quá giới hạn ${Math.round(maxBytes / 1024 / 1024)}MB.`
     );
   }
 
-  if (resolvedKind === "voice") {
-    if (!isVoiceMimeType(mimeType)) {
-      throw new Error("MIME type không hợp lệ cho voice message.");
-    }
-    if (!Number.isFinite(durationMs) || durationMs <= 0) {
-      throw new Error("Voice message cần durationMs hợp lệ.");
-    }
-    const maxDurationMs = config.maxVoiceSeconds * 1000;
-    if (durationMs > maxDurationMs) {
-      throw new Error(`Voice message vượt quá ${config.maxVoiceSeconds} giây.`);
-    }
-  }
-
-  if (!senderId) {
-    throw new Error("Thiếu senderId.");
-  }
-
   return {
     resolvedKind,
     displayFileName: sanitizeFileName(originalName),
-    safeSenderId: sanitizeSenderId(senderId),
     mimeType
   };
 }
 
-async function createPresignedUpload({
-  originalName,
-  mimeType,
-  size,
-  senderId,
-  kind = null,
-  durationMs = null
-}) {
+async function createPresignedUpload({ originalName, mimeType, size, kind = null }) {
   const {
     resolvedKind,
     displayFileName,
-    safeSenderId,
     mimeType: validatedMimeType
   } = validateUploadMetadata({
     originalName,
     mimeType,
     size,
-    senderId,
-    kind,
-    durationMs
+    kind
   });
 
   const now = new Date();
   const year = String(now.getFullYear());
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const storedFileName = `${randomUUID()}.${extensionFromMimeType(validatedMimeType)}`;
-  const fileKey = `chats/${safeSenderId}/${year}/${month}/${storedFileName}`;
+  const fileKey = `documents/${year}/${month}/${storedFileName}`;
 
   const s3Client = getS3Client();
   const command = new PutObjectCommand({
@@ -154,7 +120,6 @@ async function createPresignedUpload({
     ContentType: validatedMimeType,
     Metadata: {
       originalname: displayFileName.slice(0, 120),
-      userid: safeSenderId,
       kind: resolvedKind
     }
   });
@@ -179,7 +144,6 @@ async function createPresignedUpload({
     mimeType: validatedMimeType,
     size,
     kind: resolvedKind,
-    durationMs: resolvedKind === "voice" ? durationMs : null,
     expiresIn
   };
 }
@@ -247,28 +211,38 @@ async function verifyUploadedObject({ fileKey, expectedSize, expectedMimeType })
   }
 
   if (expectedMimeType && head.ContentType && head.ContentType !== expectedMimeType) {
-    throw new Error("Content-Type object không khớp metadata.");
+    // S3 may append charset; compare base type
+    const headBase = String(head.ContentType).split(";")[0].trim();
+    if (headBase !== expectedMimeType) {
+      throw new Error("Content-Type object không khớp metadata.");
+    }
   }
 
   return true;
 }
 
-async function verifyUploadedObjectContent({ fileKey, expectedMimeType, originalName }) {
+async function verifyUploadedObjectContent({
+  fileKey,
+  expectedMimeType,
+  originalName,
+  expectedSize
+}) {
   if (!fileKey) {
     throw new Error("Thiếu fileKey.");
   }
 
   const s3Client = getS3Client();
 
-  // Head first for early size/kind limit reject (as per spec)
   let head;
   try {
-    head = await s3Client.send(new HeadObjectCommand({
-      Bucket: config.s3Bucket,
-      Key: fileKey
-    }));
+    head = await s3Client.send(
+      new HeadObjectCommand({
+        Bucket: config.s3Bucket,
+        Key: fileKey
+      })
+    );
   } catch (error) {
-    if (error?.name === "NoSuchKey" || error?.$metadata?.httpStatusCode === 404) {
+    if (error?.name === "NoSuchKey" || error?.name === "NotFound" || error?.$metadata?.httpStatusCode === 404) {
       throw new Error("Object chưa tồn tại trên storage.");
     }
     throw new Error(error?.message || "Không thể xác minh object trên storage.");
@@ -279,32 +253,35 @@ async function verifyUploadedObjectContent({ fileKey, expectedMimeType, original
     throw new Error("File rỗng trên storage.");
   }
 
+  if (Number.isFinite(expectedSize) && expectedSize > 0 && realSize !== Number(expectedSize)) {
+    throw new Error("Kích thước object không khớp metadata.");
+  }
+
   const kind = getKindFromMimeType(expectedMimeType);
   const maxBytes = getMaxBytesForKind(kind);
   if (realSize > maxBytes) {
     throw new Error(`File vượt quá giới hạn ${Math.round(maxBytes / 1024 / 1024)}MB.`);
   }
 
-  // Decide fetch strategy per spec:
-  // - text/plain: full if <= MAX (already checked)
-  // - Office Open XML: full (yauzl needs central dir at EOF)
-  // - image/pdf/audio/generic: prefix ok, but full if small
   const isTextPlain = expectedMimeType === "text/plain";
-  const isOffice = expectedMimeType === "application/msword" ||
-    expectedMimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+  const isOffice =
+    expectedMimeType === "application/msword" ||
+    expectedMimeType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     expectedMimeType === "application/vnd.ms-excel" ||
-    expectedMimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+    expectedMimeType ===
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
     expectedMimeType === "application/vnd.ms-powerpoint" ||
-    expectedMimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    expectedMimeType ===
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
-  const fetchFull = isTextPlain || isOffice || realSize <= (1024 * 1024); // 1MB threshold for simplicity
+  const fetchFull = isTextPlain || isOffice || realSize <= 1024 * 1024;
 
   const getParams = {
     Bucket: config.s3Bucket,
     Key: fileKey
   };
   if (!fetchFull) {
-    // first bytes for magic detection (images, pdf, audio, etc.)
     const prefixBytes = Math.min(8192, realSize);
     getParams.Range = `bytes=0-${prefixBytes - 1}`;
   }
@@ -328,7 +305,6 @@ async function verifyUploadedObjectContent({ fileKey, expectedMimeType, original
     throw new Error("File rỗng trên storage.");
   }
 
-  // Reuse content validation
   await validateUploadedFile({
     buffer,
     declaredMimeType: expectedMimeType,
@@ -353,49 +329,6 @@ async function deleteObject(fileKey) {
   return true;
 }
 
-async function uploadAvatar({ buffer, mimeType, size, userId }) {
-  if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
-    throw new Error("Ảnh đại diện không hợp lệ.");
-  }
-
-  if (!size || size <= 0 || size > config.maxAvatarBytes) {
-    throw new Error("Kích thước ảnh đại diện không hợp lệ.");
-  }
-
-  if (!IMAGE_MIME_TYPES.has(mimeType)) {
-    throw new Error("Chỉ hỗ trợ ảnh JPEG, PNG, WebP hoặc GIF.");
-  }
-
-  const validatedMimeType = await validateUploadedFile({
-    buffer,
-    declaredMimeType: mimeType,
-    originalName: `avatar.${extensionFromMimeType(mimeType)}`
-  });
-
-  const safeUserId = sanitizeSenderId(userId);
-  const storedFileName = `${randomUUID()}.${extensionFromMimeType(validatedMimeType)}`;
-  const fileKey = `avatars/${safeUserId}/${storedFileName}`;
-
-  const s3Client = getS3Client();
-  await s3Client.send(
-    new PutObjectCommand({
-      Bucket: config.s3Bucket,
-      Key: fileKey,
-      Body: buffer,
-      ContentType: validatedMimeType
-    })
-  );
-
-  const avatarUrl = await resolveFileUrl(fileKey);
-
-  return {
-    avatarUrl,
-    fileKey,
-    mimeType: validatedMimeType,
-    size
-  };
-}
-
 module.exports = {
   redactPresignedUrl,
   validateUploadMetadata,
@@ -403,6 +336,5 @@ module.exports = {
   resolveFileUrl,
   verifyUploadedObject,
   verifyUploadedObjectContent,
-  deleteObject,
-  uploadAvatar
+  deleteObject
 };

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NotKet Documents</title>
+  <link rel="stylesheet" href="/css/documents.css" />
+</head>
+<body class="home-page">
+  <main class="home-card">
+    <div class="home-brand">
+      <div class="folder-avatar" aria-hidden="true">📁</div>
+      <h1>NotKet Documents</h1>
+      <p class="home-subtitle">Lưu tin nhắn, ảnh và file cá nhân của bạn</p>
+    </div>
+
+    <form id="access-form" class="access-form hidden">
+      <label for="access-key">Mã truy cập</label>
+      <input
+        id="access-key"
+        name="accessKey"
+        type="password"
+        autocomplete="off"
+        placeholder="Nhập mã truy cập app"
+      />
+      <button type="submit" class="btn btn-primary">Lưu mã và mở</button>
+      <p class="form-hint">Mã được lưu trên trình duyệt (localStorage), không gửi cookie.</p>
+    </form>
+
+    <div id="open-mode-actions" class="home-actions hidden">
+      <a class="btn btn-primary" href="/documents">Mở My Documents</a>
+    </div>
+
+    <p id="home-error" class="form-error" role="alert"></p>
+  </main>
+  <script src="/js/api.js"></script>
+  <script src="/js/home.js"></script>
+</body>
+</html>

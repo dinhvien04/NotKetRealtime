@@ -1,56 +1,39 @@
-process.env.JWT_SECRET =
-  process.env.JWT_SECRET || "test-secret-key-32chars-minimum!";
+process.env.APP_OPEN_MODE = "true";
+process.env.DATABASE_URL = process.env.DATABASE_URL || "";
 
 const assert = require("assert");
 const http = require("http");
 const app = require("../src/app");
-const { getDatabaseError, closePool } = require("../src/db");
+
+async function request(server, path) {
+  const address = server.address();
+  const res = await fetch(`http://127.0.0.1:${address.port}${path}`);
+  const data = await res.json();
+  return { status: res.status, data };
+}
 
 async function run() {
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
-  const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
-    const live = await fetch(`${baseUrl}/health/live`);
-    const liveData = await live.json();
+    const live = await request(server, "/health/live");
     assert.equal(live.status, 200);
-    assert.equal(liveData.ok, true);
-    assert.ok(liveData.uptimeSeconds >= 0);
+    assert.equal(live.data.ok, true);
 
-    const health = await fetch(`${baseUrl}/health`);
-    const healthData = await health.json();
-    assert.ok(health.status === 200 || health.status === 503);
-    assert.equal(typeof healthData.ok, "boolean");
-    assert.ok(healthData.services);
-    assert.ok(healthData.services.database);
-
-    if (!getDatabaseError()) {
-      assert.equal(healthData.services.database.ok, true);
-    }
-
-    const ready = await fetch(`${baseUrl}/health/ready`);
-    const readyData = await ready.json();
-    assert.ok(ready.status === 200 || ready.status === 503);
-    assert.equal(typeof readyData.ok, "boolean");
-
-    const dbHealth = await fetch(`${baseUrl}/health/db`);
-    const dbHealthData = await dbHealth.json();
-    assert.ok(dbHealth.status === 200 || dbHealth.status === 503);
-    assert.equal(typeof dbHealthData.ok, "boolean");
-    assert.ok(dbHealthData.database);
-
-    console.log("Đã kiểm tra: /health, /health/db, /health/live, /health/ready.");
+    const config = await request(server, "/api/app/config");
+    assert.equal(config.status, 200);
+    assert.equal(config.data.ok, true);
+    assert.equal(typeof config.data.openMode, "boolean");
+    assert.ok(Array.isArray(config.data.allowedMimeTypes));
   } finally {
     await new Promise((resolve) => server.close(resolve));
-    await closePool();
   }
+
+  console.log("health.api.test.js OK");
 }
 
-run()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+run().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

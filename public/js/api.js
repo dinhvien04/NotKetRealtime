@@ -1,57 +1,87 @@
-// api.js - HTTP api helper + csrf
-async function ensureCsrfToken() {
-  if (window.state && window.state.csrfToken) {
-    return window.state.csrfToken;
-  }
-  const response = await fetch("/api/csrf-token", { credentials: "include" });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.ok || !data.csrfToken) {
-    throw new Error(data.error || "Không thể lấy CSRF token.");
-  }
-  if (window.state) window.state.csrfToken = data.csrfToken;
-  return data.csrfToken;
-}
+(function (global) {
+  const ACCESS_KEY_STORAGE = "notket_access_key";
 
-async function api(path, options = {}) {
-  const method = (options.method || "GET").toUpperCase();
-  const headers = { ...(options.headers || {}) };
-
-  if (method !== "GET" && method !== "HEAD") {
-    const csrfToken = await ensureCsrfToken();
-    headers["X-CSRF-Token"] = csrfToken;
+  function getAccessKey() {
+    try {
+      return localStorage.getItem(ACCESS_KEY_STORAGE) || "";
+    } catch (_error) {
+      return "";
+    }
   }
 
-  if (!headers["Content-Type"] && options.body && typeof options.body === "string") {
-    headers["Content-Type"] = "application/json";
+  function setAccessKey(key) {
+    try {
+      if (key) {
+        localStorage.setItem(ACCESS_KEY_STORAGE, key);
+      } else {
+        localStorage.removeItem(ACCESS_KEY_STORAGE);
+      }
+    } catch (_error) {
+      /* ignore */
+    }
   }
 
-  const response = await fetch(path, {
-    credentials: "include",
-    headers,
-    ...options
-  });
-  const data = await response.json().catch(() => ({}));
-  if (data.csrfToken && window.state) {
-    window.state.csrfToken = data.csrfToken;
-  }
-  if (!response.ok || data.ok === false) {
-    throw new Error(data.error || "Yêu cầu thất bại.");
-  }
-  return data;
-}
+  async function api(path, options = {}) {
+    const headers = new Headers(options.headers || {});
+    if (!headers.has("Content-Type") && options.body && !(options.body instanceof FormData)) {
+      headers.set("Content-Type", "application/json");
+    }
 
-function getInitials(name = "") {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(-2)
-    .map((part) => part.charAt(0).toLocaleUpperCase("vi"))
-    .join("");
-}
+    const key = getAccessKey();
+    if (key) {
+      headers.set("X-App-Access-Key", key);
+    }
 
-// expose
-if (typeof window !== "undefined") {
-  window.ensureCsrfToken = ensureCsrfToken;
-  window.api = api;
-  window.getInitials = getInitials;
-}
+    const response = await fetch(path, {
+      ...options,
+      headers
+    });
+
+    let data = null;
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      data = { ok: response.ok, error: await response.text() };
+    }
+
+    if (!response.ok) {
+      const error = new Error((data && data.error) || "Yêu cầu thất bại.");
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+
+    return data;
+  }
+
+  function formatFileSize(bytes) {
+    const n = Number(bytes) || 0;
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  function showToast(message, type = "info") {
+    const el = document.getElementById("toast");
+    if (!el) return;
+    el.textContent = message;
+    el.classList.remove("hidden", "error", "success");
+    if (type === "error") el.classList.add("error");
+    if (type === "success") el.classList.add("success");
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(() => {
+      el.classList.add("hidden");
+    }, 3200);
+  }
+
+  global.NotKetApi = {
+    ACCESS_KEY_STORAGE,
+    getAccessKey,
+    setAccessKey,
+    api,
+    formatFileSize,
+    showToast
+  };
+})(window);

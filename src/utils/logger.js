@@ -20,10 +20,11 @@ const SENSITIVE_PATTERNS = [
   /(JWT_SECRET\s*[:=]\s*)([^\s,;]+)/gi,
   /(S3_SECRET_ACCESS_KEY\s*[:=]\s*)([^\s,;]+)/gi,
   /(S3_ACCESS_KEY_ID\s*[:=]\s*)([^\s,;]+)/gi,
+  /(APP_ACCESS_KEY\s*[:=]\s*)([^\s,;]+)/gi,
   /(X-Amz-Signature=)[^&\s"']+/gi,
   /(X-Amz-Credential=)[^&\s"']+/gi,
   /(X-Amz-Security-Token=)[^&\s"']+/gi,
-  /(GEMINI_API_KEY\s*[:=]\s*)([^\s,;]+)/gi
+  /(AWSAccessKeyId=)[^&\s"']+/gi
 ];
 
 function redactString(value) {
