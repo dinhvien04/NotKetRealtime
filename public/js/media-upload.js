@@ -37,7 +37,7 @@
         // 0 often means CORS/network blocked the response body
         if (xhr.status === 0) {
           const err = new Error(
-            "Upload S3 bị chặn (CORS/network). Kiểm tra S3 CORS AllowedOrigins."
+            "Upload thất bại. Kiểm tra S3 CORS AllowedOrigins nếu đang deploy."
           );
           err.code = "S3_CORS";
           reject(err);
@@ -48,7 +48,7 @@
 
       xhr.onerror = () => {
         const err = new Error(
-          "Lỗi mạng khi upload S3. Kiểm tra S3 CORS AllowedOrigins."
+          "Upload thất bại. Kiểm tra S3 CORS AllowedOrigins nếu đang deploy."
         );
         err.code = "S3_CORS";
         reject(err);

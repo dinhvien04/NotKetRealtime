@@ -5,12 +5,6 @@ process.env.STORAGE_LIMIT_BYTES = "1000";
 const messages = { used: 400 };
 const pending = { bytes: 500 };
 
-const documentMessageRepo = {
-  async getStorageUsage() {
-    return messages.used;
-  }
-};
-
 const documentUploadRepo = {
   async expireOldUploads() {
     return 0;
@@ -20,6 +14,21 @@ const documentUploadRepo = {
   },
   async createPendingUpload() {
     return {};
+  },
+  async listExpiredPendingUploads() {
+    return [];
+  },
+  async markExpired() {
+    return null;
+  }
+};
+
+const documentMessageRepoWithKey = {
+  async getStorageUsage() {
+    return messages.used;
+  },
+  async hasAnyMessageWithFileKey() {
+    return false;
   }
 };
 
@@ -43,7 +52,7 @@ require.cache[require.resolve("../src/repositories/document-message.repository.j
   id: require.resolve("../src/repositories/document-message.repository.js"),
   filename: require.resolve("../src/repositories/document-message.repository.js"),
   loaded: true,
-  exports: documentMessageRepo
+  exports: documentMessageRepoWithKey
 };
 require.cache[require.resolve("../src/repositories/document-upload.repository.js")] = {
   id: require.resolve("../src/repositories/document-upload.repository.js"),

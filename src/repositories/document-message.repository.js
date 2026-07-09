@@ -104,6 +104,18 @@ async function findByFileKey(fileKey) {
   return mapRow(result.rows[0]);
 }
 
+/** True if any message (including soft-deleted) references this file_key. */
+async function hasAnyMessageWithFileKey(fileKey) {
+  const result = await query(
+    `SELECT 1 AS ok
+     FROM document_messages
+     WHERE file_key = $1
+     LIMIT 1`,
+    [fileKey]
+  );
+  return Boolean(result.rows[0]);
+}
+
 async function softDelete(id) {
   const result = await query(
     `UPDATE document_messages
@@ -167,6 +179,7 @@ module.exports = {
   listMessages,
   findById,
   findByFileKey,
+  hasAnyMessageWithFileKey,
   softDelete,
   getStorageUsage,
   listRecentByType,

@@ -5,17 +5,53 @@ const config = require("../config/env");
 
 const MAX_TEXT_LENGTH = 5000;
 
-async function enrichMessage(message) {
+async function enrichMessage(message, urlCache = null) {
   if (!message) return null;
   const payload = { ...message };
   if (message.fileKey && (message.type === "image" || message.type === "file")) {
     try {
-      payload.fileUrl = await storageService.resolveFileUrl(message.fileKey);
+      if (urlCache && urlCache.has(message.fileKey)) {
+        payload.fileUrl = urlCache.get(message.fileKey);
+      } else {
+        payload.fileUrl = await storageService.resolveFileUrl(message.fileKey);
+        if (urlCache) urlCache.set(message.fileKey, payload.fileUrl);
+      }
     } catch (_error) {
       payload.fileUrl = null;
+      if (urlCache) urlCache.set(message.fileKey, null);
     }
   }
   return payload;
+}
+
+/**
+ * Resolve signed URLs once per unique fileKey within a request
+ * (list + recent media often share keys).
+ */
+async function enrichMessages(messages) {
+  if (!messages || !messages.length) return [];
+  const urlCache = new Map();
+  const uniqueKeys = [
+    ...new Set(
+      messages
+        .filter(
+          (m) => m && m.fileKey && (m.type === "image" || m.type === "file")
+        )
+        .map((m) => m.fileKey)
+    )
+  ];
+
+  await Promise.all(
+    uniqueKeys.map(async (fileKey) => {
+      try {
+        urlCache.set(fileKey, await storageService.resolveFileUrl(fileKey));
+      } catch (_error) {
+        urlCache.set(fileKey, null);
+      }
+    })
+  );
+
+  return Promise.all(messages.map((m) => enrichMessage(m, urlCache)));
 }
 
 async function createTextMessage(body) {
@@ -37,7 +73,7 @@ async function createTextMessage(body) {
 
 async function listMessages(options) {
   const result = await documentMessageRepo.listMessages(options);
-  const messages = await Promise.all(result.messages.map(enrichMessage));
+  const messages = await enrichMessages(result.messages);
   return {
     messages,
     nextCursor: result.nextCursor,
@@ -263,9 +299,12 @@ async function getRecentMedia() {
     if (links.length >= RECENT_LINKS_UI_MAX) break;
   }
 
+  // Dedupe signed URL work across images + files in the same request
+  const media = await enrichMessages([...images, ...files]);
+  const imageCount = images.length;
   return {
-    images: await Promise.all(images.map(enrichMessage)),
-    files: await Promise.all(files.map(enrichMessage)),
+    images: media.slice(0, imageCount),
+    files: media.slice(imageCount),
     links
   };
 }

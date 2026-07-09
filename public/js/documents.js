@@ -25,6 +25,8 @@
   let searchTimer = null;
   let openMode = false;
   let loading = false;
+  /** @type {Map<string, HTMLElement>} tempId → row */
+  const optimisticRows = new Map();
 
   function dayKey(dateValue) {
     const d = new Date(dateValue);
@@ -89,26 +91,47 @@
     return false;
   }
 
-  function createMeta(message) {
+  function createMeta(message, { optimistic = false, error = false } = {}) {
     const meta = document.createElement("div");
     meta.className = "bubble-meta";
 
     const time = document.createElement("span");
-    time.textContent = formatTime(message.createdAt);
+    if (error) {
+      time.textContent = "Gửi thất bại";
+      time.className = "meta-error";
+    } else if (optimistic) {
+      time.textContent = "Đang gửi...";
+    } else {
+      time.textContent = formatTime(message.createdAt);
+    }
     meta.appendChild(time);
 
-    const del = document.createElement("button");
-    del.type = "button";
-    del.textContent = "Xóa";
-    del.addEventListener("click", () => deleteMessage(message.id));
-    meta.appendChild(del);
+    if (!optimistic && !error) {
+      const del = document.createElement("button");
+      del.type = "button";
+      del.textContent = "Xóa";
+      del.addEventListener("click", () => deleteMessage(message.id));
+      meta.appendChild(del);
+    } else if (error) {
+      const dismiss = document.createElement("button");
+      dismiss.type = "button";
+      dismiss.textContent = "Gỡ";
+      dismiss.addEventListener("click", () => {
+        const row = optimisticRows.get(message.id);
+        if (row && row.parentNode) row.parentNode.removeChild(row);
+        optimisticRows.delete(message.id);
+      });
+      meta.appendChild(dismiss);
+    }
 
     return meta;
   }
 
-  function renderTextBubble(message) {
+  function renderTextBubble(message, options = {}) {
     const row = document.createElement("div");
     row.className = "message-row";
+    if (options.optimistic) row.classList.add("optimistic");
+    if (options.error) row.classList.add("send-error");
     row.dataset.id = message.id;
 
     const bubble = document.createElement("div");
@@ -116,7 +139,7 @@
     bubble.textContent = message.body || "";
 
     row.appendChild(bubble);
-    row.appendChild(createMeta(message));
+    row.appendChild(createMeta(message, options));
     return row;
   }
 
@@ -193,10 +216,103 @@
     return row;
   }
 
-  function renderMessages(messages) {
-    clearNode(messageList);
+  function removeEmptyState() {
+    const empty = messageList.querySelector(".empty-state");
+    if (empty) empty.remove();
+    const skeleton = messageList.querySelector(".message-skeleton");
+    if (skeleton) skeleton.remove();
+  }
 
-    if (!messages.length) {
+  function ensureDaySeparator(dateValue) {
+    const key = dayKey(dateValue);
+    let lastDay = null;
+    for (const child of messageList.children) {
+      if (child.classList.contains("date-separator")) {
+        lastDay = child.dataset.day;
+      }
+    }
+    if (lastDay === key) return;
+
+    const sep = document.createElement("div");
+    sep.className = "date-separator";
+    sep.dataset.day = key;
+    sep.textContent = formatDayLabel(dateValue);
+    messageList.appendChild(sep);
+  }
+
+  function appendMessageToList(message, options = {}) {
+    removeEmptyState();
+    ensureDaySeparator(message.createdAt || new Date().toISOString());
+
+    let row;
+    if (message.type === "image") {
+      row = renderImageBubble(message);
+    } else if (message.type === "file") {
+      row = renderFileBubble(message);
+    } else {
+      row = renderTextBubble(message, options);
+    }
+    messageList.appendChild(row);
+    messageList.scrollTop = messageList.scrollHeight;
+    return row;
+  }
+
+  function showMessageSkeleton() {
+    clearNode(messageList);
+    const wrap = document.createElement("div");
+    wrap.className = "message-skeleton";
+    wrap.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < 4; i += 1) {
+      const bar = document.createElement("div");
+      bar.className = `skeleton-bubble sk-w${(i % 3) + 1}`;
+      wrap.appendChild(bar);
+    }
+    messageList.appendChild(wrap);
+  }
+
+  function showInfoSkeleton() {
+    if (storageText) storageText.textContent = "Đang tải...";
+    if (storageFill) storageFill.style.width = "0%";
+
+    if (recentImages) {
+      clearNode(recentImages);
+      for (let i = 0; i < 4; i += 1) {
+        const sk = document.createElement("div");
+        sk.className = "skeleton-thumb";
+        recentImages.appendChild(sk);
+      }
+    }
+    if (recentFiles) {
+      clearNode(recentFiles);
+      for (let i = 0; i < 2; i += 1) {
+        const li = document.createElement("li");
+        li.className = "skeleton-line";
+        recentFiles.appendChild(li);
+      }
+    }
+    if (recentLinks) {
+      clearNode(recentLinks);
+      for (let i = 0; i < 2; i += 1) {
+        const li = document.createElement("li");
+        li.className = "skeleton-line";
+        recentLinks.appendChild(li);
+      }
+    }
+  }
+
+  function renderMessages(messages) {
+    // Preserve in-flight optimistic rows that have not been confirmed yet
+    const pendingOptimistic = [];
+    optimisticRows.forEach((row, id) => {
+      if (row.classList.contains("optimistic") || row.classList.contains("send-error")) {
+        pendingOptimistic.push({ id, row });
+      }
+    });
+
+    clearNode(messageList);
+    optimisticRows.clear();
+
+    if (!messages.length && !pendingOptimistic.length) {
       const empty = document.createElement("div");
       empty.className = "empty-state";
       empty.textContent = "Chưa có nội dung. Hãy gửi tin nhắn hoặc tải file lên.";
@@ -214,6 +330,7 @@
         lastDay = key;
         const sep = document.createElement("div");
         sep.className = "date-separator";
+        sep.dataset.day = key;
         sep.textContent = formatDayLabel(message.createdAt);
         messageList.appendChild(sep);
       }
@@ -225,6 +342,12 @@
       } else {
         messageList.appendChild(renderTextBubble(message));
       }
+    }
+
+    // Re-attach pending optimistic / error rows at the bottom
+    for (const item of pendingOptimistic) {
+      messageList.appendChild(item.row);
+      optimisticRows.set(item.id, item.row);
     }
 
     messageList.scrollTop = messageList.scrollHeight;
@@ -242,12 +365,19 @@
       }
       const safe = safeHttpUrl(url);
       if (!safe) {
-        showToast("URL file không hợp lệ", "error");
+        showToast("Không mở được file: URL không hợp lệ hoặc đã hết hạn.", "error");
         return;
       }
       window.open(safe, "_blank", "noopener,noreferrer");
     } catch (error) {
-      showToast(error.message || "Không mở được file.", "error");
+      const msg = (error && error.message) || "";
+      if (error && error.status === 404) {
+        showToast("Không tìm thấy file trên máy chủ.", "error");
+      } else if (/hết hạn|expired|invalid|không hợp lệ/i.test(msg)) {
+        showToast("Không mở được file: link đã hết hạn hoặc không hợp lệ.", "error");
+      } else {
+        showToast(msg || "Không mở được file. Thử lại sau.", "error");
+      }
     }
   }
 
@@ -268,6 +398,14 @@
         return;
       }
       showToast(error.message || "Không tải được tin nhắn.", "error");
+      // Keep any optimistic rows; show empty if list is skeleton-only
+      if (messageList.querySelector(".message-skeleton")) {
+        clearNode(messageList);
+        const empty = document.createElement("div");
+        empty.className = "empty-state";
+        empty.textContent = "Không tải được tin nhắn.";
+        messageList.appendChild(empty);
+      }
     } finally {
       loading = false;
     }
@@ -394,23 +532,94 @@
         recentLinks.appendChild(empty);
       }
     } catch (_error) {
-      /* ignore panel errors */
+      // Panel errors must not block message list
+      if (storageText) storageText.textContent = "Không tải được dung lượng";
+      if (recentImages && !recentImages.children.length) {
+        clearNode(recentImages);
+        const empty = document.createElement("div");
+        empty.className = "info-empty";
+        empty.textContent = "Không tải được.";
+        recentImages.appendChild(empty);
+      }
     }
+  }
+
+  function markOptimisticError(tempId) {
+    const row = optimisticRows.get(tempId);
+    if (!row) return;
+    row.classList.remove("optimistic");
+    row.classList.add("send-error");
+    const meta = row.querySelector(".bubble-meta");
+    if (meta) {
+      clearNode(meta);
+      const time = document.createElement("span");
+      time.className = "meta-error";
+      time.textContent = "Gửi thất bại";
+      meta.appendChild(time);
+      const dismiss = document.createElement("button");
+      dismiss.type = "button";
+      dismiss.textContent = "Gỡ";
+      dismiss.addEventListener("click", () => {
+        if (row.parentNode) row.parentNode.removeChild(row);
+        optimisticRows.delete(tempId);
+      });
+      meta.appendChild(dismiss);
+    }
+  }
+
+  function replaceOptimisticWithReal(tempId, message) {
+    const oldRow = optimisticRows.get(tempId);
+    if (oldRow && oldRow.parentNode) {
+      const newRow =
+        message.type === "image"
+          ? renderImageBubble(message)
+          : message.type === "file"
+            ? renderFileBubble(message)
+            : renderTextBubble(message);
+      oldRow.parentNode.replaceChild(newRow, oldRow);
+    }
+    optimisticRows.delete(tempId);
   }
 
   async function sendText() {
     const body = (messageInput.value || "").trim();
     if (!body) return;
+
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimisticMsg = {
+      id: tempId,
+      type: "text",
+      body,
+      createdAt: new Date().toISOString()
+    };
+
+    messageInput.value = "";
     sendBtn.disabled = true;
+
+    const row = appendMessageToList(optimisticMsg, { optimistic: true });
+    optimisticRows.set(tempId, row);
+
     try {
-      await api("/api/messages", {
+      const data = await api("/api/messages", {
         method: "POST",
         body: JSON.stringify({ type: "text", body })
       });
-      messageInput.value = "";
-      await loadMessages();
-      await loadStorage();
+      if (data && data.message) {
+        if (currentType === "all" || currentType === "text") {
+          replaceOptimisticWithReal(tempId, data.message);
+        } else {
+          const old = optimisticRows.get(tempId);
+          if (old && old.parentNode) old.parentNode.removeChild(old);
+          optimisticRows.delete(tempId);
+        }
+      } else {
+        optimisticRows.delete(tempId);
+        await loadMessages();
+      }
+      // Refresh panel in background — do not block composer
+      loadStorage();
     } catch (error) {
+      markOptimisticError(tempId);
       showToast(error.message || "Gửi thất bại.", "error");
     } finally {
       sendBtn.disabled = false;
@@ -418,7 +627,7 @@
     }
   }
 
-  function setUploadProgress(visible, pct = 0, text = "Đang tải lên...") {
+  function setUploadProgress(visible, pct = 0, text = "Đang tải lên S3...") {
     if (visible) {
       uploadProgress.classList.remove("hidden");
       uploadProgressFill.style.width = `${pct}%`;
@@ -439,7 +648,19 @@
       lower.includes("failed to fetch") ||
       lower.includes("networkerror")
     ) {
-      return "Kiểm tra S3 CORS AllowedOrigins (thêm domain Vercel/custom vào bucket CORS).";
+      return "Upload thất bại. Kiểm tra S3 CORS AllowedOrigins nếu đang deploy.";
+    }
+    if (
+      lower.includes("không hợp lệ") ||
+      lower.includes("metadata") ||
+      lower.includes("khớp") ||
+      lower.includes("magic") ||
+      lower.includes("nội dung") ||
+      lower.includes("loại file") ||
+      lower.includes("xác minh") ||
+      lower.includes("object")
+    ) {
+      return "File không hợp lệ hoặc metadata không khớp.";
     }
     return msg;
   }
@@ -447,15 +668,14 @@
   async function handleFile(file) {
     if (!file) return;
     const kind = file.type && file.type.startsWith("image/") ? "image" : "file";
-    setUploadProgress(true, 0, `Đang tải ${file.name}...`);
+    setUploadProgress(true, 0, "Đang tải lên S3...");
     try {
       const upload = await uploadFile(file, kind, (pct) => {
-        setUploadProgress(true, pct, `Đang tải ${file.name}... ${pct}%`);
+        setUploadProgress(true, pct, `Đang tải lên S3... ${pct}%`);
       });
 
-      // Keep bar visible while backend Head/GetObject + content validation runs
       setUploadProgress(true, 100, "Đang kiểm tra file...");
-      await api("/api/messages/file", {
+      const data = await api("/api/messages/file", {
         method: "POST",
         body: JSON.stringify({
           fileKey: upload.fileKey,
@@ -468,8 +688,19 @@
       });
 
       showToast("Upload thành công.", "success");
-      await loadMessages();
-      await loadStorage();
+      if (data && data.message) {
+        // Append confirmed message without full list reload when filter allows
+        if (
+          currentType === "all" ||
+          currentType === data.message.type
+        ) {
+          // Reload list to keep ordering/search correct (cheap with LIMIT 100)
+          await loadMessages();
+        }
+      } else {
+        await loadMessages();
+      }
+      loadStorage();
     } catch (error) {
       showToast(formatUploadError(error), "error");
     } finally {
@@ -483,7 +714,7 @@
     try {
       await api(`/api/messages/${id}`, { method: "DELETE" });
       await loadMessages();
-      await loadStorage();
+      loadStorage();
     } catch (error) {
       showToast(error.message || "Xóa thất bại.", "error");
     }
@@ -508,6 +739,7 @@
       btn.addEventListener("click", () => {
         currentType = btn.dataset.type || "all";
         filterBtns.forEach((b) => b.classList.toggle("active", b === btn));
+        showMessageSkeleton();
         loadMessages();
       });
     });
@@ -524,6 +756,7 @@
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => {
         searchQuery = (searchInput.value || "").trim();
+        showMessageSkeleton();
         loadMessages();
       }, 250);
     });
@@ -556,8 +789,13 @@
 
     if (!ensureAccess()) return;
     bindUi();
+
+    // Phase 1: messages ASAP; Phase 2: storage/info panel in parallel after
+    showMessageSkeleton();
+    showInfoSkeleton();
     await loadMessages();
-    await loadStorage();
+    // Do not await — panel must never block message list
+    loadStorage();
   }
 
   init();

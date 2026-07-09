@@ -14,7 +14,10 @@ const {
   verifyUploadedObject,
   verifyUploadedObjectContent,
   redactPresignedUrl,
-  createPresignedUpload
+  createPresignedUpload,
+  resolveFileUrl,
+  clearSignedUrlCache,
+  getSignedUrlCacheSize
 } = require("../src/services/storage.service");
 const {
   setS3ClientForTests,
@@ -294,7 +297,34 @@ async function run() {
   assert.equal(upload.fileName, "note.txt");
   assert.ok(!String(upload.uploadUrl).includes(process.env.S3_SECRET_ACCESS_KEY));
 
+  // Public base URL: no signedUrlCache entries
+  process.env.S3_PUBLIC_BASE_URL = "https://cdn.example.com";
+  clearSignedUrlCache();
+  const publicUrl1 = await resolveFileUrl("documents/2026/07/cached.png");
+  const publicUrl2 = await resolveFileUrl("documents/2026/07/cached.png");
+  assert.equal(publicUrl1, "https://cdn.example.com/documents/2026/07/cached.png");
+  assert.equal(publicUrl2, publicUrl1);
+  assert.equal(getSignedUrlCacheSize(), 0, "public base URLs are not stored in signedUrlCache");
+  delete process.env.S3_PUBLIC_BASE_URL;
+
+  // Presigned PUT must not populate signedUrlCache
+  clearSignedUrlCache();
+  const beforePut = getSignedUrlCacheSize();
   resetS3ClientForTests();
+  await createPresignedUpload({
+    originalName: "put-only.txt",
+    mimeType: "text/plain",
+    size: 4,
+    kind: "file"
+  });
+  assert.equal(
+    getSignedUrlCacheSize(),
+    beforePut,
+    "presigned PUT must not populate signedUrlCache"
+  );
+
+  resetS3ClientForTests();
+  clearSignedUrlCache();
   console.log("storage.service.test.js OK");
 }
 

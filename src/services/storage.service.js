@@ -22,6 +22,27 @@ const {
 const { sanitizeFileName } = require("../utils/filename");
 const logger = require("../utils/logger");
 
+/**
+ * In-memory signed GET URL cache (per process).
+ * Key: fileKey → { url, expiresAt }.
+ * TTL is s3SignedUrlTtlSeconds - 60s so clients never receive near-expiry URLs.
+ * Do NOT cache presigned PUT uploadUrl.
+ */
+const signedUrlCache = new Map();
+
+function getSignedUrlCacheTtlMs() {
+  const seconds = Math.max(0, Number(config.s3SignedUrlTtlSeconds) - 60);
+  return seconds * 1000;
+}
+
+function clearSignedUrlCache() {
+  signedUrlCache.clear();
+}
+
+function getSignedUrlCacheSize() {
+  return signedUrlCache.size;
+}
+
 function redactPresignedUrl(url) {
   if (typeof url !== "string" || !url) {
     return url;
@@ -158,6 +179,12 @@ async function resolveFileUrl(fileKey) {
     return `${base}/${fileKey}`;
   }
 
+  const now = Date.now();
+  const cached = signedUrlCache.get(fileKey);
+  if (cached && cached.expiresAt > now && cached.url) {
+    return cached.url;
+  }
+
   const s3Client = getS3Client();
   const command = new GetObjectCommand({
     Bucket: config.s3Bucket,
@@ -168,9 +195,18 @@ async function resolveFileUrl(fileKey) {
     expiresIn: config.s3SignedUrlTtlSeconds
   });
 
+  const cacheTtlMs = getSignedUrlCacheTtlMs();
+  if (cacheTtlMs > 0) {
+    signedUrlCache.set(fileKey, {
+      url: signedUrl,
+      expiresAt: now + cacheTtlMs
+    });
+  }
+
   logger.debug("Signed GET URL created", {
     fileKey,
-    signedUrl: redactPresignedUrl(signedUrl)
+    signedUrl: redactPresignedUrl(signedUrl),
+    cached: cacheTtlMs > 0
   });
 
   return signedUrl;
@@ -344,5 +380,8 @@ module.exports = {
   resolveFileUrl,
   verifyUploadedObject,
   verifyUploadedObjectContent,
-  deleteObject
+  deleteObject,
+  clearSignedUrlCache,
+  getSignedUrlCacheSize,
+  getSignedUrlCacheTtlMs
 };

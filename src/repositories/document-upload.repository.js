@@ -73,6 +73,35 @@ async function expireOldUploads() {
 }
 
 /**
+ * Pending rows past expires_at (still status=pending) for light S3 cleanup.
+ */
+async function listExpiredPendingUploads(limit = 20) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const result = await query(
+    `SELECT *
+     FROM document_uploads
+     WHERE status = 'pending'
+       AND expires_at <= now()
+     ORDER BY expires_at ASC
+     LIMIT $1`,
+    [safeLimit]
+  );
+  return result.rows.map(mapRow);
+}
+
+async function markExpired(fileKey) {
+  const result = await query(
+    `UPDATE document_uploads
+     SET status = 'expired'
+     WHERE file_key = $1
+       AND status = 'pending'
+     RETURNING *`,
+    [fileKey]
+  );
+  return mapRow(result.rows[0]);
+}
+
+/**
  * Sum file_size of pending uploads that are not yet expired.
  * Used for storage quota so reserved pending space cannot be double-spent.
  */
@@ -91,5 +120,7 @@ module.exports = {
   findPendingUpload,
   consumePendingUpload,
   expireOldUploads,
+  listExpiredPendingUploads,
+  markExpired,
   getPendingUploadBytes
 };

@@ -321,6 +321,18 @@ a {
   align-self: flex-end;
 }
 
+.message-row.optimistic {
+  opacity: 0.72;
+}
+
+.message-row.send-error .bubble {
+  border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.meta-error {
+  color: var(--danger) !important;
+}
+
 .bubble {
   background: var(--bubble);
   border-radius: 14px 14px 4px 14px;
@@ -328,6 +340,57 @@ a {
   line-height: 1.45;
   word-break: break-word;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Loading skeletons */
+.message-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-end;
+  padding: 0.5rem 0;
+  width: 100%;
+}
+
+.skeleton-bubble,
+.skeleton-thumb,
+.skeleton-line {
+  background: linear-gradient(
+    90deg,
+    var(--bg-input) 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    var(--bg-input) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+  border-radius: 12px;
+}
+
+.skeleton-bubble {
+  height: 48px;
+  align-self: flex-end;
+}
+
+.skeleton-bubble.sk-w1 { width: 55%; }
+.skeleton-bubble.sk-w2 { width: 72%; }
+.skeleton-bubble.sk-w3 { width: 42%; }
+
+.skeleton-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 4px;
+}
+
+.skeleton-line {
+  height: 44px;
+  width: 100%;
+  border-radius: 8px;
+  list-style: none;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 .bubble-meta {

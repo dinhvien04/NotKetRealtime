@@ -91,7 +91,20 @@ app.use(
 app.use(requestLoggingMiddleware);
 app.use(express.json({ limit: "32kb" }));
 app.use(express.urlencoded({ extended: false, limit: "32kb" }));
-app.use(express.static(path.join(__dirname, "..", "public")));
+
+// API + health must never be cached by browsers/CDNs (includes signed URL responses).
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/") || req.path.startsWith("/health")) {
+    res.setHeader("Cache-Control", "no-store");
+  }
+  next();
+});
+
+// Static assets: longer cache in production (HTML is served separately with no-store).
+const staticOptions = config.isProduction
+  ? { maxAge: "1h", etag: true, lastModified: true }
+  : { etag: true, lastModified: true };
+app.use(express.static(path.join(__dirname, "..", "public"), staticOptions));
 
 app.use("/", webRoutes);
 app.use("/api/app", appRoutes);

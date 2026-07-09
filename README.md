@@ -25,7 +25,8 @@ Do not put AWS secrets in the frontend. Do not commit `.env`.
 - REST-only (no Socket.IO) — easy on Vercel
 - Rate limits: light on GET messages, stricter on writes + upload sign
 - Links panel: extracts `http(s)` / `www.` from text notes (sanitized; no `javascript:`)
-- S3 content check: full body for text/Office; first 8KB magic-byte check for image/PDF (Vercel-friendly)
+- S3 content check: full body for text/Office; first 8KB **magic-byte** check for image/PDF (Vercel-friendly) — **not antivirus**
+- In-memory signed GET URL cache (TTL = signed TTL − 60s); pending-upload cleanup on sign
 
 ## Setup
 
@@ -52,8 +53,9 @@ Open `http://localhost:3000`.
 | `S3_ENDPOINT` / `S3_FORCE_PATH_STYLE` | For S3-compatible providers |
 | `S3_PUBLIC_BASE_URL` | Optional CDN/public base; otherwise signed GET URLs |
 | `MAX_IMAGE_BYTES` | Default ~6MB — image uploads |
-| `MAX_FILE_BYTES` | Default ~10MB — non-image files. If Vercel times out on large text/Office verify, set to `6291456` (6MB). Image/PDF verify only reads first 8KB. |
+| `MAX_FILE_BYTES` | Default ~10MB — non-image files. If Vercel times out on large text/Office verify, set to `6291456` (6MB) and you can full-read all types more safely. Image/PDF verify only reads first 8KB magic bytes. |
 | `STORAGE_LIMIT_BYTES` | Total quota for committed + pending uploads |
+| `NODE_ENV` | Set **`production`** on deploy so static assets get `maxAge` 1h; API responses always `Cache-Control: no-store`. |
 
 ### Security modes
 
@@ -126,11 +128,16 @@ npm test             # unit / light API tests
 Socket.IO is removed; REST + serverless is supported.
 
 1. Set env vars in the Vercel dashboard (same as `.env.example`).
-2. Add your Vercel domain to **S3 CORS**.
-3. Run migrations against Neon (`npm run db:migrate` locally or CI).
-4. `vercel.json` routes all traffic to `server.js`.
+2. Set **`NODE_ENV=production`** (Vercel usually sets this automatically).
+3. Add your Vercel domain to **S3 CORS**.
+4. Run migrations against Neon (`npm run db:migrate` locally or CI).
+5. `vercel.json` routes all traffic to `server.js`.
 
-Pending uploads are stored in Postgres table `document_uploads` (not in-memory) so multi-instance / serverless is safe.
+Pending uploads are stored in Postgres table `document_uploads` (not in-memory) so multi-instance / serverless is safe. Expired pending rows are cleaned lightly on each `POST /api/uploads/sign` (≤20 items; orphan S3 objects deleted when no matching message). Optional: `POST /api/storage/cleanup`.
+
+### File validation note
+
+Confirm-upload validation is **magic-byte / structure checks** (e.g. PNG/JPEG/PDF headers, Office ZIP layout, text null-byte scan). It is **not antivirus** and does not guarantee a file is safe. For stronger confidence under serverless limits, lower `MAX_FILE_BYTES=6291456` so full-body checks stay small.
 
 ## API (protected when not open mode)
 
@@ -144,6 +151,7 @@ Pending uploads are stored in Postgres table `document_uploads` (not in-memory) 
 | POST | `/api/uploads/sign` | Presigned PUT |
 | POST | `/api/uploads/refresh-url` | New signed GET |
 | GET | `/api/storage/usage` | Used / limit + recent media |
+| POST | `/api/storage/cleanup` | Light cleanup expired pending uploads |
 | GET | `/health` | Health |
 
 ## Manual test checklist
@@ -159,20 +167,26 @@ Pending uploads are stored in Postgres table `document_uploads` (not in-memory) 
 8. Network tab: no AWS secret / access key in JS bundles
 
 ### Uploads & validation (local or Vercel)
-1. Upload real **PNG/JPG ~5–6MB** (near `MAX_IMAGE_BYTES`) — progress shows upload % then **“Đang kiểm tra file...”**
+1. Upload real **PNG/JPG ~5–6MB** (near `MAX_IMAGE_BYTES`) — progress: **“Đang tải lên S3...”** then **“Đang kiểm tra file...”**
 2. Upload real **PDF** and **TXT** near `MAX_FILE_BYTES` (default 10MB)
 3. After upload, **click open** → signed GET in new tab works
-4. Fake `image/png` with text body → **reject**
+4. Fake `image/png` with text body → **reject** (magic-byte only, not AV)
 5. Extensions **`.svg` / `.html` / `.zip` / `.js` / `.exe`** → **reject**
 6. If confirm step times out on large files on Vercel: set  
    `MAX_FILE_BYTES=6291456`  
    (image/PDF already use 8KB prefix validation)
 
+### Perceived performance
+1. Send text → bubble appears immediately (optimistic); API fail → mark error / gỡ
+2. Open `/documents` → message list loads before storage/info panel
+3. Network: static `/css` `/js` may cache in production; `/api/*` is `no-store`
+
 ### S3 + Vercel
 1. CORS includes Vercel **and** custom domain (if any); `CLIENT_ORIGIN` / `APP_BASE_URL` match
 2. Presigned PUT succeeds from browser (Network → S3 host, status 200)
-3. Bad CORS → toast: **“Kiểm tra S3 CORS AllowedOrigins…”**
-4. Refresh page → history from Neon; files still open via signed GET
+3. Bad CORS → toast: **“Upload thất bại. Kiểm tra S3 CORS AllowedOrigins nếu đang deploy.”**
+4. Backend verify fail → toast: **“File không hợp lệ hoặc metadata không khớp.”**
+5. Refresh page → history from Neon; files still open via signed GET
 
 ## License
 
